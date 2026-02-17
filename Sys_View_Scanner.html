@@ -1,0 +1,305 @@
+<div id="sipgtk-root">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap');
+    
+    :root { 
+      --bg: #020617; 
+      --card: rgba(15, 23, 42, 0.7); 
+      --accent: #06b6d4; 
+      --primary: #3b82f6; 
+      --success: #10b981; 
+      --danger: #ef4444; 
+      --warning: #f59e0b; 
+      --purple: #a855f7; 
+      --border: rgba(255, 255, 255, 0.1);
+      --glass: rgba(255, 255, 255, 0.03);
+      --gold: #facc15;
+    }
+
+    #sipgtk-root { 
+      all: unset; position: fixed; inset: 0; 
+      background: radial-gradient(circle at top right, #0f172a, #020617); 
+      color: #fff; font-family: 'Plus Jakarta Sans', sans-serif; 
+      display: flex; flex-direction: column; z-index: 99999; overflow: hidden; 
+    }
+    
+    header { 
+      height: 90px; padding: 0 40px; display: flex; justify-content: space-between; 
+      align-items: center; border-bottom: 1px solid var(--border); 
+      background: rgba(2, 6, 23, 0.8); backdrop-filter: blur(20px); 
+    }
+    .brand h1 { font-family: 'Space Grotesk', sans-serif; font-size: 32px; font-weight: 800; letter-spacing: 2px; margin: 0; }
+    .brand span { color: var(--accent); }
+    .clock-box { text-align: right; }
+    #jam-v { font-family: 'Space Grotesk', sans-serif; font-size: 40px; font-weight: 700; color: var(--accent); line-height: 1; }
+    #tgl-v { font-size: 12px; font-weight: 700; color: #64748b; text-transform: uppercase; margin-top: 4px; }
+
+    .ticker-v { height: 40px; background: rgba(30, 41, 59, 0.5); display: flex; align-items: center; overflow: hidden; border-bottom: 1px solid var(--border); }
+    .ticker-content-v { white-space: nowrap; animation: moveT 150s linear infinite; font-size: 13px; font-weight: 600; color: #94a3b8; padding-left: 100%; }
+    @keyframes moveT { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+
+    main { flex: 1; display: grid; grid-template-columns: 420px 1fr; overflow: hidden; }
+    .sidebar-v { background: rgba(2, 6, 23, 0.4); border-right: 1px solid var(--border); padding: 30px; display: flex; flex-direction: column; gap: 20px; }
+    
+    .cam-wrapper { position: relative; width: 100%; aspect-ratio: 4/3; border-radius: 24px; overflow: hidden; border: 2px solid #334155; box-shadow: 0 0 40px rgba(0,0,0,0.5); }
+    video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    .scanner-line { position: absolute; top: 0; left: 0; width: 100%; height: 4px; background: linear-gradient(to right, transparent, var(--accent), transparent); box-shadow: 0 0 15px var(--accent); animation: scanAnim 3s ease-in-out infinite; z-index: 5; }
+    @keyframes scanAnim { 0%, 100% { top: 0%; } 50% { top: 100%; } }
+
+    .res-v { background: var(--card); border: 1px solid var(--border); border-radius: 24px; padding: 25px; text-align: center; min-height: 130px; display: flex; flex-direction: column; justify-content: center; backdrop-filter: blur(10px); transition: all 0.4s cubic-bezier(0.23, 1, 0.32, 1); }
+    
+    .stats-v { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .st-card { background: var(--glass); border: 1px solid var(--border); border-radius: 16px; padding: 15px 10px; text-align: center; backdrop-filter: blur(5px); transition: transform 0.3s ease; }
+    .st-card:hover { transform: scale(1.05); }
+    .st-val { font-family: 'Space Grotesk', sans-serif; font-size: 24px; font-weight: 700; margin-bottom: 4px; }
+    .st-label { font-size: 10px; font-weight: 800; color: #64748b; letter-spacing: 1px; }
+
+    /* --- AWARD BOX CSS --- */
+    .award-v { 
+      background: linear-gradient(135deg, rgba(250, 204, 21, 0.15), rgba(250, 204, 21, 0.02)); 
+      border: 1px solid rgba(250, 204, 21, 0.3); 
+      border-radius: 20px; padding: 15px; 
+      display: none; align-items: center; gap: 15px; 
+      backdrop-filter: blur(10px);
+      margin-top: 5px;
+      animation: awardFadeIn 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes awardFadeIn {
+      from { opacity: 0; transform: scale(0.8) translateY(10px); }
+      to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .award-img { width: 45px; height: 45px; border-radius: 50%; border: 2px solid var(--gold); object-fit: cover; }
+    .award-info { flex: 1; }
+    .award-title { font-size: 10px; font-weight: 800; color: var(--gold); letter-spacing: 1.5px; margin-bottom: 2px; }
+    .award-name { font-size: 13px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+
+    .gallery-v { padding: 40px; overflow-y: auto; background: rgba(2, 6, 23, 0.2); scroll-behavior: smooth; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+    .section-header h2 { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 26px; margin: 0; letter-spacing: -0.5px; }
+    
+    /* Smooth Staggered Animation for Cards */
+    .grid-v { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 25px; }
+    .card-v { 
+      background: var(--card); border-radius: 28px; border: 1px solid var(--border); 
+      overflow: hidden; transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); 
+      backdrop-filter: blur(10px);
+      animation: cardEntrance 0.6s ease-out both;
+      will-change: transform, opacity;
+    }
+    
+    @keyframes cardEntrance {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .card-v:hover { transform: translateY(-8px); border-color: var(--accent); box-shadow: 0 15px 35px rgba(0,0,0,0.5); }
+    
+    .card-img-box { width: 100%; aspect-ratio: 4/3; overflow: hidden; background: #1e293b; }
+    .card-img-box img { width: 100%; height: 100%; object-fit: cover; transition: transform 0.5s ease; }
+    .card-v:hover .card-img-box img { transform: scale(1.05); }
+    
+    .card-body { padding: 20px; }
+    .card-name { font-weight: 800; font-size: 16px; margin-bottom: 4px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-role { font-size: 11px; color: #94a3b8; font-weight: 600; margin-bottom: 12px; }
+    .card-meta { display: flex; justify-content: space-between; align-items: flex-end; }
+    .card-time { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; color: #fff; line-height: 1; }
+    .card-status-text { font-size: 11px; font-weight: 700; margin-top: 6px; }
+    .card-badge { font-size: 10px; font-weight: 800; padding: 6px 14px; border-radius: 10px; text-transform: uppercase; letter-spacing: 1px; transition: all 0.3s ease; }
+
+    .overlay-v { position: fixed; inset: 0; background: var(--bg); z-index: 1000000; display: flex; align-items: center; justify-content: center; cursor: pointer; text-align: center; backdrop-filter: blur(15px); }
+    .unlock-btn { width: 120px; height: 120px; background: var(--primary); border-radius: 50%; display: grid; place-items: center; font-size: 50px; margin: 0 auto 20px; box-shadow: 0 0 60px rgba(59, 130, 246, 0.5); animation: pulse 2s infinite; }
+    @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 80px rgba(59, 130, 246, 0.7); } 100% { transform: scale(1); } }
+    #scanner-input { position: absolute; opacity: 0; top: -1000px; }
+  </style>
+
+  <div id="unlock-v" class="overlay-v" onclick="window.initSystem()">
+    <div><div class="unlock-btn">🔘</div><h2 style="font-family:'Space Grotesk'; font-weight:800; letter-spacing:4px; font-size: 24px;">INITIALIZE SCANNER</h2><p style="color:#64748b; font-weight:700; text-transform: uppercase; letter-spacing: 1px;">Click to Activate Command Center</p></div>
+  </div>
+
+  <input type="text" id="scanner-input" autocomplete="off">
+
+  <header>
+    <div class="brand"><h1>SIPGTK<span>.PRO</span></h1></div>
+    <div class="clock-box"><div id="jam-v">00:00:00</div><div id="tgl-v">...</div></div>
+  </header>
+
+  <div class="ticker-v"><div class="ticker-content-v" id="ticker-text-v">Sistem Terkoneksi. Menunggu aktivitas pemindaian untuk hari ini...</div></div>
+
+  <main>
+    <aside class="sidebar-v">
+      <div class="cam-wrapper"><div class="scanner-line"></div><video id="video-v" autoplay muted playsinline></video><canvas id="canvas-v" width="320" height="240" style="display:none"></canvas></div>
+      <div id="res-box-v" class="res-v"><div style="font-size:40px; margin-bottom: 10px;">📡</div><div style="font-weight:800; font-size:18px; letter-spacing:1px; color: var(--accent);">READY TO SCAN</div></div>
+      
+      <div class="stats-v">
+        <div class="st-card"><div id="s-masuk" class="st-val" style="color:var(--success)">0</div><div class="st-label">MASUK</div></div>
+        <div class="st-card"><div id="s-izin" class="st-val" style="color:var(--accent)">0</div><div class="st-label">IZIN</div></div>
+        <div class="st-card"><div id="s-sakit" class="st-val" style="color:var(--danger)">0</div><div class="st-label">SAKIT</div></div>
+        <div class="st-card"><div id="s-pulang" class="st-val" style="color:var(--warning)">0</div><div class="st-label">PULANG</div></div>
+        <div class="st-card" style="grid-column: span 2;"><div id="s-lembur" class="st-val" style="color:var(--purple)">0</div><div class="st-label">LEMBUR</div></div>
+      </div>
+
+      <div id="award-v" class="award-v">
+        <img id="award-img" src="" class="award-img" onerror="this.src='https://ui-avatars.com/api/?background=random&color=fff'">
+        <div class="award-info">
+          <div class="award-title">🏆 EARLY BIRD</div>
+          <div id="award-name" class="award-name">-</div>
+        </div>
+      </div>
+
+    </aside>
+    <section class="gallery-v">
+      <div class="section-header"><h2>Aktivitas Presensi Hari Ini</h2><span id="total-count-v" style="background:var(--primary); padding:10px 25px; border-radius:50px; font-size:12px; font-weight:800; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.3);">0 REKAMAN</span></div>
+      <div id="list-v" class="grid-v"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+  // Variabel kontrol untuk mendeteksi perubahan data baru
+  let lastDataCount = 0;
+
+  window.initSystem = function() {
+    document.getElementById("unlock-v").style.display = "none";
+    const inp = document.getElementById("scanner-input");
+    const video = document.getElementById("video-v");
+    if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+      navigator.mediaDevices.getUserMedia({video:{width:320, height:240}}).then(s => { video.srcObject = s; }).catch(err => { alert("Gagal mengakses kamera."); });
+    }
+    inp.focus();
+    setInterval(() => { if(!document.hidden) inp.focus(); }, 1500);
+    document.body.addEventListener("click", () => inp.focus());
+    window.startCore();
+  };
+
+  window.startCore = function() {
+    setInterval(() => {
+      const d = new Date();
+      document.getElementById("jam-v").innerText = d.toLocaleTimeString("id-ID", {hour12:false});
+      document.getElementById("tgl-v").innerText = d.toLocaleDateString("id-ID", {weekday:'long', day:'numeric', month:'long', year:'numeric'});
+    }, 1000);
+
+    google.script.run.withSuccessHandler(res => {
+      if(res.info) document.getElementById("ticker-text-v").innerText = (res.info + " • ").repeat(5);
+      if(res.nama) {
+        const brand = document.querySelector(".brand h1");
+        if(brand) brand.innerHTML = `SIPGTK <small style="font-size:12px; display:block; color:#64748b; font-family:'Plus Jakarta Sans'">Sistem Informasi Presensi Guru dan Tenaga Kependidikan <span>${res.nama}</span> </small>`;
+      }
+    }).getPresensiScannerSettings();
+
+    document.getElementById("scanner-input").addEventListener("keydown", e => {
+      if(e.key === "Enter") {
+        const val = e.target.value.trim();
+        e.target.value = "";
+        if(val.length > 3) window.executeScan(val);
+      }
+    });
+
+    // --- REAL-TIME AUTO UPDATE ---
+    window.refreshUI(); // Eksekusi pertama saat load
+    setInterval(() => {
+      window.refreshUI(); // Periksa data baru setiap 5 detik
+    }, 5000);
+  };
+
+  window.executeScan = function(nik) {
+    const rb = document.getElementById("res-box-v");
+    rb.innerHTML = `<div style="font-weight:800; color:var(--accent); font-size: 20px;">ENCRYPTING...</div>`;
+    
+    // 1. Ambil foto dari webcam
+    const cvs = document.getElementById("canvas-v");
+    const video = document.getElementById("video-v");
+    const ctx = cvs.getContext("2d");
+    ctx.drawImage(video, 0, 0, 320, 240);
+    const photo = cvs.toDataURL("image/jpeg", 0.4);
+
+    // 2. ENKRIPSI NIK SEBELUM DIKIRIM (Kunci Keamanan Satsumi)
+    const secureNIK = encryptNIK(nik); 
+
+    // 3. Kirim ke Backend
+    google.script.run.withSuccessHandler(res => {
+      window.refreshUI();
+      // ... (logika response sukses/gagal Anda) ...
+    }).simpanPresensi(secureNIK, photo); // Data yang dikirim adalah secureNIK
+  };
+
+  window.refreshUI = function() {
+    google.script.run.withSuccessHandler(data => {
+      // LOGIKA ANTI-FLICKER: Hanya update jika jumlah data berubah
+      const currentCount = data.logs ? data.logs.length : 0;
+      if (currentCount === lastDataCount) return; 
+      
+      lastDataCount = currentCount;
+      const list = document.getElementById("list-v");
+      if (!list) return;
+      
+      list.innerHTML = "";
+      
+      if (data.logs && data.logs.length > 0) {
+        data.logs.forEach((log, index) => {
+          const inisial = log.nama ? log.nama.charAt(0).toUpperCase() : "?";
+          const img = (log.foto && log.foto.length > 50) ? log.foto : `https://ui-avatars.com/api/?name=${inisial}&background=random&color=fff&size=200`;
+          
+          let badgeStyle = "background:rgba(255,255,255,0.05); color:#fff;";
+          let statusColor = "#94a3b8";
+          const status = log.mode.toLowerCase();
+          
+          if (status === 'masuk') { 
+            badgeStyle = "background:rgba(16,185,129,0.15); color:#34d399; border: 1px solid rgba(16,185,129,0.2);"; 
+            statusColor = (log.keterangan !== 'Normal') ? "var(--danger)" : "var(--success)"; 
+          }
+          else if (status === 'pulang') { 
+            badgeStyle = "background:rgba(245,158,11,0.15); color:#fbbf24; border: 1px solid rgba(245,158,11,0.2);"; 
+            statusColor = (log.keterangan !== 'Normal') ? "var(--danger)" : "var(--success)"; 
+          }
+          else if (status === 'lembur') {
+            badgeStyle = "background:rgba(168,85,247,0.15); color:#c084fc; border: 1px solid rgba(168,85,247,0.2);";
+          }
+          else if (status === 'izin' || status === 'sakit') {
+            badgeStyle = "background:rgba(239,68,68,0.15); color:#f87171; border: 1px solid rgba(239,68,68,0.2);";
+          }
+
+          const cardHTML = `
+            <div class="card-v" style="animation-delay: ${index * 0.1}s">
+              <div class="card-img-box"><img src="${img}" alt="User"></div>
+              <div class="card-body">
+                <div class="card-name">${log.nama}</div>
+                <div class="card-role">${log.jabatan}</div>
+                <div class="card-meta">
+                  <div style="display:flex; flex-direction:column;">
+                    <span class="card-time">${log.waktu}</span>
+                    <span class="card-status-text" style="color:${statusColor}">${log.keterangan}</span>
+                  </div>
+                  <span class="card-badge" style="${badgeStyle}">${log.mode}</span>
+                </div>
+              </div>
+            </div>`;
+          list.insertAdjacentHTML('beforeend', cardHTML);
+        });
+
+        updateStatSmooth("s-masuk", data.stats.masuk);
+        updateStatSmooth("s-pulang", data.stats.pulang);
+        updateStatSmooth("s-izin", data.stats.izin);
+        updateStatSmooth("s-lembur", data.stats.lembur);
+        
+        if(data.first) {
+          const award = document.getElementById("award-v");
+          award.style.display = "flex";
+          document.getElementById("award-name").innerText = data.first.nama;
+          document.getElementById("award-img").src = (data.first.foto && data.first.foto.length > 50) ? data.first.foto : `https://ui-avatars.com/api/?name=${data.first.nama.charAt(0)}&background=random&color=fff`;
+        }
+      }
+    }).getScannerData();
+  };
+
+  function updateStatSmooth(id, value) {
+    const el = document.getElementById(id);
+    if (el && el.innerText != value) {
+      el.style.transform = "scale(1.2)";
+      el.style.transition = "0.3s";
+      setTimeout(() => {
+        el.innerText = value || 0;
+        el.style.transform = "scale(1)";
+      }, 1500);
+    }
+  }
+</script>

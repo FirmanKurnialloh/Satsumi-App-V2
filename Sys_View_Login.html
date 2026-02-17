@@ -1,0 +1,26 @@
+<div id="view-login" class="state-view view-centered">
+  <div class="login-card">
+    <div class="logo">🔑</div>
+    <h2 style="margin:0 0 5px 0;">Satsumi App</h2>
+    <p style="color:var(--sub); font-size: 13px; margin-bottom: 30px;">Login Administrator & User</p>
+    
+    <form onsubmit="handleLogin(event)" style="width: 100%;">
+      <div class="input-wrapper">
+        <input type="email" id="email" placeholder="Email Address" required>
+      </div>
+
+      <div class="input-wrapper">
+        <input type="password" id="pass" placeholder="Password" required>
+        <i class="bi bi-eye-slash toggle-password" onclick="togglePassword()"></i>
+      </div>
+      
+      <button type="submit" id="btn-login" class="btn">
+        <span>MASUK APLIKASI</span>
+      </button>
+    </form>
+    
+    <div style="margin-top: 25px; font-size: 11px; color: var(--sub);">
+      v1.0.0 &copy; 2026 Satsumi Project
+    </div>
+  </div>
+</div>

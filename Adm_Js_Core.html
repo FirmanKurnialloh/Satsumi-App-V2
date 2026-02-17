@@ -1,0 +1,150 @@
+<script>
+  // === INIT & NAVIGASI ADMIN ===
+  function initDashboard(user) {
+    const elName = document.getElementById('profile-name');
+    const elRole = document.getElementById('profile-role');
+    const elInit = document.getElementById('profile-initial');
+
+    // Cek apakah elemennya benar-benar ada di HTML
+    if (!elName || !elRole || !elInit) {
+      console.error("🚨 ERROR UI: Elemen Topbar tidak ditemukan! Pastikan Adm_View_Topbar.html sudah di-include.");
+      alert("Peringatan: Topbar hilang. Silakan cek console (F12).");
+    } else {
+      // Jika ada, baru isi datanya
+      elName.innerText = user.nama;
+      elRole.innerText = user.role;
+      elInit.innerText = user.nama.charAt(0).toUpperCase();
+    }
+    
+    // Paksa pindah ke tampilan dashboard agar tidak stuck di loading
+    switchView('view-dashboard');
+    navTo('dashboard'); 
+  }
+
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    if (window.innerWidth <= 768) {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('show');
+    } else {
+      sidebar.classList.toggle('closed');
+    }
+  }
+
+  function navTo(pageId) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    const navEl = document.getElementById('nav-' + pageId);
+    if(navEl) navEl.classList.add('active');
+
+    document.querySelectorAll('.content-section').forEach(el => {
+      el.classList.remove('active-page');
+      el.style.display = 'none'; 
+    });
+
+    const target = document.getElementById('page-' + pageId);
+    if(target) {
+      target.style.display = 'block'; 
+      setTimeout(() => target.classList.add('active-page'), 10);
+    }
+
+    const titles = { 'dashboard': 'Dashboard Overview', 'users': 'Manajemen Pengguna', 'absensi': 'Laporan Absensi', 'settings': 'Pengaturan Sistem' };
+    document.getElementById('page-title').innerText = titles[pageId] || 'Dashboard';
+
+    const token = STORAGE.getItem("sess_t");
+    if(pageId === 'dashboard') loadStats(token);
+    if(pageId === 'users') loadUsers(token);
+    if(pageId === 'absensi') loadAbsensi(token);
+    if(pageId === 'settings') loadSettings(token);
+
+    if (window.innerWidth <= 768 && document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
+  }
+
+  function renderRow(tbody, u) {
+    let badgeClass = 'badge-siswa';
+    if(u.role === 'Admin' || u.role === 'Super Admin') badgeClass = 'badge-admin';
+    if(u.role === 'Guru') badgeClass = 'badge-guru';
+    if(u.role === 'Tendik') badgeClass = 'badge-tendik';
+    tbody.innerHTML += `<tr><td style="font-family:monospace;">${u.nik}</td><td><strong>${u.nama}</strong></td><td><span class="badge ${badgeClass}">${u.role}</span></td><td><span style="color:var(--success);font-size:12px;">● ${u.status}</span></td></tr>`;
+  }
+
+  // === DATA LOADERS ===
+  function loadStats(token) {
+    google.script.run.withSuccessHandler(data => {
+      document.getElementById('stat-total').innerText = data.stats.total;
+      document.getElementById('stat-total-guru').innerText = data.stats.guru;
+      document.getElementById('stat-total-tendik').innerText = data.stats.tendik; 
+      document.getElementById('stat-siswa').innerText = data.stats.siswa;
+      document.getElementById('stat-hadir').innerText = data.stats.persenPresensi + '%'; 
+      const tbody = document.getElementById('table-recent'); tbody.innerHTML = "";
+      data.table.forEach(u => renderRow(tbody, u));
+    }).getAdminDashboardData(token);
+  }
+
+  function loadUsers(token) {
+    const tbody = document.getElementById('table-users');
+    if ($.fn.DataTable.isDataTable('#userTable')) $('#userTable').DataTable().destroy();
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Mengambil data pengguna...</td></tr>';
+    
+    google.script.run.withSuccessHandler(users => {
+      tbody.innerHTML = "";
+      users.forEach(u => {
+        let roleBadge = `<span class="badge badge-siswa">${u.role}</span>`;
+        if(u.role === 'Admin' || u.role === 'Super Admin') roleBadge = `<span class="badge badge-admin">${u.role}</span>`;
+        if(u.role === 'Guru') roleBadge = `<span class="badge badge-guru">${u.role}</span>`;
+        if(u.role === 'Tendik') roleBadge = `<span class="badge badge-tendik">${u.role}</span>`;
+
+        tbody.innerHTML += `<tr>
+          <td style="font-family:monospace; font-weight:600;">${u.nik}</td>
+          <td><b>${u.nama}</b></td><td>${u.email}</td><td>${roleBadge}</td>
+          <td style="display:flex; gap:5px;">
+            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:var(--primary);" data-nik="${u.nik}" data-nama="${u.nama}" data-email="${u.email}" data-role="${u.role}" onclick="openEditUserModal(this)" title="Edit"><i class="bi bi-pencil-fill"></i></button>
+            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:#f59e0b;" onclick="openResetModal('${u.nik}', '${u.nama}')" title="Reset Password"><i class="bi bi-key-fill"></i></button>
+            <button class="btn btn-danger-outline" style="margin:0; padding:6px 10px; font-size:12px;" onclick="hapusUser('${u.nik}')" title="Hapus"><i class="bi bi-trash-fill"></i></button>
+          </td></tr>`;
+      });
+      $('#userTable').DataTable({ "pageLength": 10, "order": [[1, "asc"]], "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json", "search": "", "searchPlaceholder": "Cari Nama, NIK, atau Email..." }, "dom": '<"top-actions"f>rt<"bottom-nav"ip>', "columnDefs": [ { "targets": 4, "orderable": false } ] });
+    }).getAllUsers(token);
+  }
+
+  function loadAbsensi(token) {
+    const tbody = document.getElementById('table-absensi'); tbody.innerHTML = "";
+    google.script.run.withSuccessHandler(data => {
+      data.forEach(row => { tbody.innerHTML += `<tr><td>${row.nama}</td><td>${row.waktu}</td><td><span class="badge badge-guru">${row.status}</span></td></tr>`; });
+    }).getAbsensiSimulasi(token);
+  }
+
+  function loadSettings(token) {
+    document.getElementById('set-app-name').value = "..."; document.getElementById('set-app-desc').value = "...";
+    document.getElementById('server-time').innerText = new Date().toLocaleString();
+    google.script.run.withSuccessHandler(data => {
+      document.getElementById('set-app-name').value = data.appName; document.getElementById('set-app-desc').value = data.appDesc;
+      document.getElementById('set-maintenance').checked = data.maintenance; document.querySelector('.sidebar-title').innerText = data.appName;
+    }).getSystemSettings(token);
+  }
+
+  // === FUNGSI CRUD USER ===
+  function openAddUserModal() { document.getElementById('modal-add-user').classList.add('show'); }
+  function closeUserModal() { document.getElementById('modal-add-user').classList.remove('show'); }
+  function handleUserSubmit(e) { e.preventDefault(); closeUserModal(); showLoading("MENYIMPAN USER..."); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('new-nik').value, nama: document.getElementById('new-nama').value, email: document.getElementById('new-email').value, role: document.getElementById('new-role').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).saveUser(token, form); }
+
+  function openEditUserModal(btn) { document.getElementById('edit-nik').value = btn.getAttribute('data-nik'); document.getElementById('edit-nama').value = btn.getAttribute('data-nama'); document.getElementById('edit-email').value = btn.getAttribute('data-email'); document.getElementById('edit-role').value = btn.getAttribute('data-role'); document.getElementById('modal-edit-user').classList.add('show'); }
+  function closeEditUserModal() { document.getElementById('modal-edit-user').classList.remove('show'); }
+  function handleEditUserSubmit(e) { e.preventDefault(); closeEditUserModal(); showLoading("MENGUPDATE DATA..."); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('edit-nik').value, nama: document.getElementById('edit-nama').value, email: document.getElementById('edit-email').value, role: document.getElementById('edit-role').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).editUser(token, form); }
+
+  function openResetModal(nik, nama) { document.getElementById('reset-target-name').innerText = nama; document.getElementById('reset-target-nik').value = nik; document.getElementById('modal-reset').classList.add('show'); }
+  function closeResetModal() { document.getElementById('modal-reset').classList.remove('show'); }
+  function confirmResetPassword() { const nik = document.getElementById('reset-target-nik').value; const token = STORAGE.getItem("sess_t"); closeResetModal(); showLoading("MERESET PASSWORD..."); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); switchView('view-dashboard'); }).resetUserPassword(token, nik); }
+
+  function hapusUser(nik) { document.getElementById('delete-target-nik-value').value = nik; document.getElementById('delete-target-nik-display').innerText = nik; document.getElementById('modal-delete-user').classList.add('show'); }
+  function closeDeleteModal() { document.getElementById('modal-delete-user').classList.remove('show'); }
+  function confirmDeleteUser() { const nik = document.getElementById('delete-target-nik-value').value; const token = STORAGE.getItem("sess_t"); closeDeleteModal(); showLoading("MENGHAPUS USER..."); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).deleteUser(token, nik); }
+
+  // === FUNGSI PENGATURAN & PROFIL ===
+  function handleSaveSettings(e) { e.preventDefault(); const token = STORAGE.getItem("sess_t"); showLoading("MENYIMPAN PENGATURAN..."); const form = { appName: document.getElementById('set-app-name').value, appDesc: document.getElementById('set-app-desc').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); switchView('view-dashboard'); document.querySelector('.sidebar-title').innerText = form.appName; }).saveSystemSettings(token, form); }
+  function handleMaintenanceToggle(el) { const token = STORAGE.getItem("sess_t"); const isActive = el.checked; el.disabled = true; showToast(isActive ? "Mengaktifkan Mode Perbaikan..." : "Mematikan Mode Perbaikan...", "info"); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); el.disabled = false; }).toggleMaintenanceMode(token, isActive); }
+
+  function openProfileModal() { const encUser = STORAGE.getItem("sess_u_aes"); if (!encUser) return; const user = decryptAES(encUser); if (!user) return; document.getElementById('modal-profile-avatar').innerText = user.nama.charAt(0).toUpperCase(); document.getElementById('modal-profile-name').innerText = user.nama; document.getElementById('modal-profile-role').innerText = user.role; document.getElementById('modal-profile-nik').innerText = user.nik; document.getElementById('modal-profile-email').innerText = user.email; document.getElementById('old-pass').value = ""; document.getElementById('new-pass').value = ""; document.getElementById('confirm-pass').value = ""; document.getElementById('modal-profile').classList.add('show'); }
+  function closeProfileModal() { document.getElementById('modal-profile').classList.remove('show'); }
+  function handlePasswordChange(e) { e.preventDefault(); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('modal-profile-nik').innerText, oldPass: document.getElementById('old-pass').value, newPass: document.getElementById('new-pass').value }; if (form.newPass.length < 6) return showToast("Password minimal 6 karakter!", "error"); if (form.newPass !== document.getElementById('confirm-pass').value) return showToast("Konfirmasi password tidak cocok!", "error"); closeProfileModal(); showLoading("MENGUPDATE PASSWORD..."); google.script.run.withSuccessHandler(res => { if (res.status === 'success') { showToast("Password berhasil diganti! Login ulang...", "success"); setTimeout(() => logout(), 2000); } else { showToast(res.message, "error"); setTimeout(() => openProfileModal(), 500); } switchView('view-dashboard'); }).changeUserPassword(token, form); }
+</script>

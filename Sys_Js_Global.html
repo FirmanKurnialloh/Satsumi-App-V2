@@ -1,0 +1,66 @@
+<script>
+  // Variabel Global
+  const STORAGE = localStorage; 
+  const AES_KEY = "SATSUMI_KEY_FINAL_V99"; 
+
+  // Keamanan & Kriptografi
+  function encryptAES(data) {
+    try { return CryptoJS.AES.encrypt(JSON.stringify(data), AES_KEY).toString(); } catch(e) { return null; }
+  }
+  function decryptAES(cipher) {
+    try {
+      const bytes = CryptoJS.AES.decrypt(cipher, AES_KEY);
+      const str = bytes.toString(CryptoJS.enc.Utf8);
+      return str ? JSON.parse(str) : null;
+    } catch(e) { return null; }
+  }
+
+  // Helper UI
+  function showLoading(msg) {
+    const textEl = document.getElementById('loading-text');
+    if(textEl) textEl.innerText = msg;
+    switchView('view-loading');
+  }
+
+  function switchView(id) {
+    document.querySelectorAll('.state-view').forEach(el => el.classList.remove('active'));
+    document.getElementById(id).classList.add('active');
+  }
+
+  function showToast(msg, type="info") {
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `<span>${msg}</span>`;
+    c.appendChild(t); setTimeout(() => t.remove(), 3000);
+  }
+
+  function togglePassword() {
+    const p = document.getElementById('pass');
+    const i = document.querySelector('.toggle-password');
+    if (p.type === "password") { p.type = "text"; i.classList.replace('bi-eye-slash','bi-eye'); } 
+    else { p.type = "password"; i.classList.replace('bi-eye','bi-eye-slash'); }
+  }
+
+  // Theme Logic
+  function initTheme() {
+    const savedTheme = localStorage.getItem('sipgtk_theme') || 'dark'; 
+    if (savedTheme === 'dark') { document.body.classList.add('dark-mode'); updateThemeUI(true); } 
+    else { document.body.classList.remove('dark-mode'); updateThemeUI(false); }
+  }
+
+  function toggleTheme() {
+    const isDark = document.body.classList.toggle('dark-mode');
+    localStorage.setItem('sipgtk_theme', isDark ? 'dark' : 'light');
+    updateThemeUI(isDark);
+    showToast(isDark ? "Mode Gelap Aktif" : "Mode Terang Aktif", "info");
+  }
+
+  function updateThemeUI(isDark) {
+    const icon = document.getElementById('theme-icon');
+    if(icon) {
+      if (isDark) { icon.classList.replace('bi-sun-fill', 'bi-moon-stars-fill'); } 
+      else { icon.classList.replace('bi-moon-stars-fill', 'bi-sun-fill'); }
+    }
+  }
+</script>

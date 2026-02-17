@@ -1,0 +1,23 @@
+<div class="top-bar">
+  <div style="display: flex; align-items: center; gap: 15px;">
+    <i class="bi bi-list menu-toggle" onclick="toggleSidebar()"></i>
+    <div>
+      <h2 id="page-title" style="margin: 0; font-size: 20px;">Dashboard</h2>
+      <p style="margin: 0; color: var(--sub); font-size: 12px;">Sistem Administrasi Terpadu</p>
+    </div>
+  </div>
+  
+  <div style="display: flex; align-items: center; gap: 16px;">
+    <button onclick="toggleTheme()" class="btn-theme" id="theme-btn" title="Ganti Tema">
+      <i class="bi bi-moon-stars-fill" id="theme-icon"></i>
+    </button>
+    <div style="width: 1px; height: 24px; background: var(--border);" class="hide-mobile"></div>
+    <div class="user-profile" onclick="openProfileModal()" style="cursor: pointer;">
+      <div style="text-align: right;" class="hide-mobile">
+        <div style="font-weight: 700; font-size: 14px;" id="profile-name">User</div>
+        <div style="font-size: 11px; color: var(--accent);" id="profile-role">Role</div>
+      </div>
+      <div class="user-avatar" id="profile-initial">U</div>
+    </div>
+  </div>
+</div>

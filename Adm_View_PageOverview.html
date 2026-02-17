@@ -1,0 +1,41 @@
+<div id="page-dashboard" class="content-section">
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-label">Total Pengguna</div>
+      <div class="stat-value" id="stat-total">0</div>
+      <i class="bi bi-people-fill stat-icon"></i>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Guru</div>
+      <div class="stat-value" id="stat-total-guru">0</div>
+      <i class="bi bi-person-video3 stat-icon" style="color: var(--accent);"></i>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Tendik</div>
+      <div class="stat-value" id="stat-total-tendik">0</div>
+      <i class="bi bi-person-badge-fill stat-icon" style="color: #a78bfa;"></i>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Siswa Aktif</div>
+      <div class="stat-value" id="stat-siswa">0</div>
+      <i class="bi bi-backpack-fill stat-icon" style="color: var(--success);"></i>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Presensi Hari Ini</div>
+      <div class="stat-value" id="stat-hadir">0%</div>
+      <i class="bi bi-pie-chart-fill stat-icon" style="color: var(--danger);"></i>
+    </div>
+  </div>
+  
+  <div class="table-container">
+    <div class="table-header">
+      <div class="table-title">Activity Feed (5 Terakhir)</div>
+    </div>
+    <div style="overflow-x: auto;">
+      <table>
+        <thead><tr><th>NIK</th><th>Nama</th><th>Role</th><th>Status</th></tr></thead>
+        <tbody id="table-recent"><tr><td colspan="4">Memuat...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>

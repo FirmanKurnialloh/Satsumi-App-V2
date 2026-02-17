@@ -1,0 +1,23 @@
+<aside class="sidebar desktop-sidebar" id="sidebar-guru">
+  <div class="sidebar-header">
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <div class="sidebar-logo" style="background: var(--success);">G</div>
+      <div class="sidebar-title">Portal Guru</div>
+    </div>
+  </div>
+  
+  <nav>
+    <div class="nav-item active" onclick="navToGuru('overview')" id="nav-guru-overview">
+      <i class="bi bi-grid-fill"></i> Beranda Utama
+    </div>
+    <div class="nav-item" onclick="navToGuru('jadwal')" id="nav-guru-jadwal">
+      <i class="bi bi-calendar-event-fill"></i> Jadwal Mengajar
+    </div>
+  </nav>
+
+  <div style="margin-top: auto;">
+    <div class="nav-item" onclick="logout()" style="color: var(--danger);">
+      <i class="bi bi-box-arrow-right"></i> Keluar
+    </div>
+  </div>
+</aside>

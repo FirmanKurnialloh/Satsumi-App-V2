@@ -1,0 +1,54 @@
+<script>
+  function initDashboardGuru(user) {
+    const elName = document.getElementById('profile-name-guru');
+    const elRole = document.getElementById('profile-role-guru');
+    const elInit = document.getElementById('profile-initial-guru');
+
+    if (elName && elRole && elInit) {
+      elName.innerText = user.nama;
+      elRole.innerText = user.role;
+      elInit.innerText = user.nama.charAt(0).toUpperCase();
+    }
+    
+    // Ganti ke tampilan UI Guru (ID ini dari Gru_View_Main)
+    switchView('view-guru-dashboard');
+    navToGuru('overview'); 
+
+    // Muat data dari server
+    const token = STORAGE.getItem("sess_t");
+    google.script.run.withSuccessHandler(data => {
+      document.getElementById('guru-stat-jadwal').innerText = data.jadwalHariIni;
+      document.getElementById('guru-stat-tugas').innerText = data.tugasDiperiksa;
+    }).getGuruDashboardData(token);
+  }
+
+  function navToGuru(pageId) {
+    // 1. Reset semua menu aktif (Sidebar & Bottom Nav)
+    document.querySelectorAll('#sidebar-guru .nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.bottom-nav-item').forEach(el => el.classList.remove('active'));
+    
+    // 2. Aktifkan menu yang diklik
+    const sideNav = document.getElementById('nav-guru-' + pageId);
+    const botNav = document.getElementById('botnav-guru-' + pageId);
+    if(sideNav) sideNav.classList.add('active');
+    if(botNav) botNav.classList.add('active');
+
+    // 3. Sembunyikan semua halaman
+    document.querySelectorAll('#view-guru-dashboard .content-section').forEach(el => {
+      el.classList.remove('active-page');
+      el.style.display = 'none'; 
+    });
+
+    // 4. Tampilkan halaman target
+    const target = document.getElementById('page-guru-' + pageId);
+    if(target) {
+      target.style.display = 'block'; 
+      setTimeout(() => target.classList.add('active-page'), 10);
+    }
+
+    // 5. Update Judul Topbar
+    const titles = { 'overview': 'Beranda Guru', 'jadwal': 'Jadwal Mengajar' };
+    const titleEl = document.getElementById('page-title-guru');
+    if(titleEl) titleEl.innerText = titles[pageId] || 'Beranda Guru';
+  }
+</script>

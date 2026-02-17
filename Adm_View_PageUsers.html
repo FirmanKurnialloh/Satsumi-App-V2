@@ -1,0 +1,18 @@
+<div id="page-users" class="content-section" style="display: none;">
+  <div class="table-container" style="padding: 20px;">
+    <div class="table-header" style="margin-bottom: 20px;">
+      <div class="table-title">Manajemen User</div>
+      <button class="btn" style="width: auto; padding: 8px 15px; font-size: 12px;" onclick="openAddUserModal()">
+        <i class="bi bi-plus-lg"></i> Tambah User
+      </button>
+    </div>
+    <div style="overflow-x: auto;">
+      <table id="userTable" class="table display" style="width:100%">
+        <thead>
+          <tr><th>NIK</th><th>Nama Lengkap</th><th>Email</th><th>Role</th><th data-orderable="false">Aksi</th></tr>
+        </thead>
+        <tbody id="table-users"></tbody>
+      </table>
+    </div>
+  </div>
+</div>

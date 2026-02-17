@@ -1,0 +1,43 @@
+<div id="modal-logout" class="modal-overlay">
+  <div class="modal-card">
+    <i class="bi bi-exclamation-circle-fill modal-icon" style="color: var(--danger); font-size: 40px;"></i>
+    <h3 class="modal-title">Konfirmasi Keluar</h3>
+    <p class="modal-desc">Yakin ingin mengakhiri sesi?</p>
+    <div class="modal-actions">
+      <button class="btn btn-cancel" onclick="closeLogoutModal()">Batal</button>
+      <button class="btn btn-confirm" onclick="confirmLogout()">Ya, Keluar</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-profile" class="modal-overlay">
+  <div class="modal-card" style="width: 100%; max-width: 350px; text-align: left; padding: 25px;">
+    <div style="text-align: center; margin-bottom: 20px;">
+      <div style="width: 70px; height: 70px; background: linear-gradient(135deg, var(--primary), var(--accent)); border-radius: 50%; display: grid; place-items: center; font-size: 28px; font-weight: 800; color: white; margin: 0 auto 10px auto;" id="modal-profile-avatar">U</div>
+      <h3 style="margin: 0; font-size: 18px; color: var(--text);" id="modal-profile-name">Nama User</h3>
+      <div style="margin-top: 5px;"><span class="badge badge-admin" id="modal-profile-role">ROLE</span></div>
+    </div>
+    <div style="background: var(--input-bg); border-radius: 12px; padding: 15px; border: 1px solid var(--border); margin-bottom: 20px;">
+      <div style="margin-bottom: 12px; border-bottom: 1px dashed var(--border); padding-bottom: 12px;">
+        <label style="font-size: 10px; color: var(--sub); text-transform: uppercase;">NIK</label>
+        <div style="font-weight: 600;" id="modal-profile-nik">-</div>
+      </div>
+      <div>
+        <label style="font-size: 10px; color: var(--sub); text-transform: uppercase;">Email</label>
+        <div id="modal-profile-email" style="font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">-</div>
+      </div>
+    </div>
+    <h4 style="margin: 0 0 15px 0; font-size: 13px; color: var(--accent);"><i class="bi bi-shield-lock"></i> Ganti Password</h4>
+    <form onsubmit="handlePasswordChange(event)">
+      <div class="input-wrapper"><input type="password" id="old-pass" placeholder="Password Lama" required></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="input-wrapper"><input type="password" id="new-pass" placeholder="Baru" required></div>
+        <div class="input-wrapper"><input type="password" id="confirm-pass" placeholder="Konfirmasi" required></div>
+      </div>
+      <div class="modal-actions" style="margin-top: 20px;">
+        <button type="button" class="btn btn-cancel" onclick="closeProfileModal()">Tutup</button>
+        <button type="submit" class="btn btn-primary" style="width:auto; padding:0 15px;">Simpan</button>
+      </div>
+    </form>
+  </div>
+</div>

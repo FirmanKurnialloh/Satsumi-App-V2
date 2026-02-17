@@ -1,0 +1,223 @@
+<script>
+  // --- [SYSTEM] PEMBERSIHAN DATA SESI LAMA ---
+  (function cleanUpOldData() {
+    try {
+      if (STORAGE.getItem("user") || STORAGE.getItem("sess_u")) {
+        const cek = STORAGE.getItem("sess_u_aes");
+        if(!cek) STORAGE.clear();
+      }
+    } catch (e) {
+      console.warn("Storage cleanup failed:", e);
+    }
+  })();
+
+  const oldOnload = window.onload;
+  window.onload = function() {
+    if (oldOnload) oldOnload();
+    if (typeof initTheme === "function") initTheme();
+    
+    const encUser = STORAGE.getItem("sess_u_aes");
+    const token = STORAGE.getItem("sess_t");
+    const v = (typeof URL_PARAMS !== 'undefined') ? URL_PARAMS.v : null;
+
+    // --- [ROUTING] BYPASS KHUSUS SCANNER/KIOSK (PUBLIC) ---
+    if (v === 'scanner' || v === 'kiosk') {
+      loadSdmModule(v); 
+      return; 
+    }
+
+    // --- [ROUTING] CEK SESI USER ---
+    if (encUser && token) {
+      const user = decryptAES(encUser);
+      if (!user) { forceLogout("Sesi tidak valid."); return; }
+
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.valid) {
+            STORAGE.setItem("sess_u_aes", encryptAES(res.freshUser));
+            routeUserToDashboard(res.freshUser);
+          } else {
+            forceLogout(res.reason || "Sesi berakhir.");
+          }
+        })
+        .withFailureHandler(err => {
+          console.error("Session Validation Error:", err);
+          forceLogout("Gagal validasi sesi. Cek koneksi.");
+        })
+        .validateSessionToken(token, user);
+    } else {
+      // Delay sedikit untuk efek transisi halus
+      setTimeout(() => {
+        if (typeof switchView === "function") switchView('view-login');
+      }, 800);
+    }
+
+    // --- [UI] ANTI GOOGLE WARNING BAR ---
+    const zapGoogleWarning = () => {
+      const selectors = [
+        '#warning', 
+        '.warning-bar', 
+        '.warning-banner-bar', 
+        '.apps-script-notice-container', 
+        '.apps-script-notice-bar'
+      ];
+      selectors.forEach(s => {
+        document.querySelectorAll(s).forEach(el => { 
+          el.style.setProperty('display', 'none', 'important'); 
+          el.remove(); 
+        });
+      });
+    };
+    zapGoogleWarning(); 
+    const zapInterval = setInterval(zapGoogleWarning, 100); 
+    setTimeout(() => clearInterval(zapInterval), 5000);
+  };
+
+  /**
+   * --- [ROUTER] FUNGSI LOAD MODUL SIPGTK ---
+   * Mengoptimalkan pemuatan modul scanner/admin secara dinamis.
+   */
+  function loadSdmModule(v) {
+    const container = document.getElementById('sdm-module-container');
+    const loading = document.getElementById('view-loading');
+    
+    // Sembunyikan view bawaan Satsumi
+    if(document.getElementById('satsumi-core-views')) {
+      document.getElementById('satsumi-core-views').style.display = 'none';
+    }
+    
+    if (container) {
+      container.classList.remove('hidden');
+      container.style.display = 'block';
+    }
+
+    let targetFile = (v === 'scanner' || v === 'kiosk') ? 'Sys_View_Scanner' : 'Adm_View_SDM';
+
+    google.script.run
+      .withSuccessHandler(function(html) {
+        if (!container) return;
+        container.innerHTML = html;
+        
+        if(loading) {
+          loading.classList.remove('active');
+          loading.style.display = 'none';
+        }
+
+        // --- RESUSCITATOR: Menjalankan script di dalam HTML yang disuntik ---
+        const scripts = container.querySelectorAll("script");
+        scripts.forEach((oldScript) => {
+          const newScript = document.createElement("script");
+          // Salin semua atribut script asli (id, src, type, dll)
+          Array.from(oldScript.attributes).forEach(attr => {
+            newScript.setAttribute(attr.name, attr.value);
+          });
+          
+          // Gunakan textContent untuk inline script (mencegah error 'class' & syntax)
+          if (!oldScript.src) {
+            newScript.textContent = oldScript.textContent;
+          }
+          
+          document.head.appendChild(newScript);
+          oldScript.parentNode.removeChild(oldScript);
+        });
+      })
+      .withFailureHandler(err => {
+        console.error("Gagal load modul " + targetFile + ":", err);
+        if(loading) loading.classList.remove('active');
+        showToast("Gagal memuat sistem.", "error");
+      })
+      .include(targetFile);
+  }
+
+  /**
+   * --- [AUTH] HANDLING LOGIN ---
+   */
+  function handleLogin(e) {
+    if (e) e.preventDefault();
+    const email = document.getElementById('email').value;
+    const pass = document.getElementById('pass').value;
+    
+    if(!email || !pass) return showToast("Lengkapi email & password!", "error");
+    
+    if (typeof showLoading === "function") showLoading("OTENTIKASI AKUN...");
+    
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.status === 'success') {
+          STORAGE.setItem("sess_u_aes", encryptAES(res.user));
+          STORAGE.setItem("sess_t", res.token);
+          if (typeof showLoading === "function") showLoading("LOGIN BERHASIL...");
+          
+          setTimeout(() => {
+            const a = document.createElement('a');
+            const targetV = (typeof URL_PARAMS !== 'undefined' && URL_PARAMS.v) ? "?v=" + URL_PARAMS.v : "";
+            a.href = BASE_URL + targetV;
+            a.target = "_top"; 
+            document.body.appendChild(a);
+            a.click();
+          }, 500);
+        } else {
+          if (typeof switchView === "function") switchView('view-login'); 
+          showToast(res.message || "Login gagal.", "error");
+        }
+      })
+      .withFailureHandler(err => {
+        console.error("Login Error:", err);
+        if (typeof switchView === "function") switchView('view-login');
+        showToast("Kesalahan server. Coba lagi.", "error");
+      })
+      .checkLogin({ email, password: pass });
+  }
+
+  /**
+   * --- [DASHBOARD] ROLE BASED ROUTING ---
+   */
+  function routeUserToDashboard(user) {
+    const sdmContainer = document.getElementById('sdm-module-container');
+    if(sdmContainer) { 
+      sdmContainer.classList.add('hidden'); 
+      sdmContainer.innerHTML = ""; 
+    }
+    
+    const coreViews = document.getElementById('satsumi-core-views');
+    if(coreViews) coreViews.classList.remove('hidden');
+
+    const userRole = (user.role || "").toUpperCase();
+    if (userRole.includes('ADMIN') || userRole.includes('SUPER')) {
+      if(typeof initDashboard === "function") initDashboard(user);
+    } else if (userRole.includes('GURU')) {
+      if(typeof initDashboardGuru === "function") initDashboardGuru(user);
+    } else {
+      forceLogout("Role tidak dikenali oleh sistem.");
+    }
+  }
+
+  // --- [LOGOUT] FUNCTIONS ---
+  function forceLogout(msg) { 
+    STORAGE.clear(); 
+    if(msg) showToast(msg, "error"); 
+    if (typeof switchView === "function") switchView('view-login'); 
+  }
+
+  function logout() { 
+    const modal = document.getElementById('modal-logout');
+    if(modal) modal.classList.add('show'); 
+  }
+
+  function closeLogoutModal() { 
+    const modal = document.getElementById('modal-logout');
+    if(modal) modal.classList.remove('show'); 
+  }
+
+  function confirmLogout() {
+    STORAGE.clear(); 
+    closeLogoutModal();
+    if (typeof showLoading === "function") showLoading("SEDANG KELUAR...");
+    
+    const a = document.createElement('a');
+    a.href = BASE_URL + "?page=login";
+    a.target = "_top"; 
+    document.body.appendChild(a);
+    a.click();
+  }
+</script>

@@ -1,0 +1,60 @@
+<div id="view-guru-dashboard" class="state-view">
+  <div class="dashboard-container">
+    
+    <?!= include('Gru_View_Sidebar'); ?>
+
+    <main class="main-content">
+      <div class="top-bar">
+        <div style="display: flex; align-items: center; gap: 15px;">
+          <div class="guru-topbar-title">
+            <h2 id="page-title-guru" style="margin: 0; font-size: 20px;">Beranda Guru</h2>
+            <p style="margin: 0; color: var(--sub); font-size: 12px;">Sistem Administrasi Terpadu</p>
+          </div>
+        </div>
+        
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <button onclick="toggleTheme()" class="btn-theme" title="Ganti Tema">
+            <i class="bi bi-moon-stars-fill" id="theme-icon-guru"></i>
+          </button>
+          <div class="user-profile hide-mobile" onclick="openProfileModal()" style="cursor: pointer;">
+            <div style="text-align: right;">
+              <div style="font-weight: 700; font-size: 14px;" id="profile-name-guru">Nama Guru</div>
+              <div style="font-size: 11px; color: var(--success);" id="profile-role-guru">Guru</div>
+            </div>
+            <div class="user-avatar" id="profile-initial-guru" style="color: var(--success);">G</div>
+          </div>
+        </div>
+      </div>
+      
+      <div id="page-guru-overview" class="content-section active-page">
+        <div class="stats-grid">
+          <div class="stat-card" style="border-top: 4px solid var(--success);">
+            <div class="stat-label">Jadwal Hari Ini</div>
+            <div class="stat-value" id="guru-stat-jadwal">0</div>
+            <i class="bi bi-calendar-check-fill stat-icon" style="color: var(--success);"></i>
+          </div>
+          <div class="stat-card" style="border-top: 4px solid var(--accent);">
+            <div class="stat-label">Tugas Menunggu</div>
+            <div class="stat-value" id="guru-stat-tugas">0</div>
+            <i class="bi bi-journal-text stat-icon" style="color: var(--accent);"></i>
+          </div>
+        </div>
+        
+        <div class="login-card" style="max-width: 100%; text-align: left; padding: 25px;">
+          <h3 style="margin-top:0;">Selamat Datang di Portal Guru!</h3>
+          <p style="color:var(--sub); font-size:13px;">Gunakan navigasi di bawah (jika memakai HP) atau di samping (jika memakai Laptop) untuk mengakses menu.</p>
+        </div>
+      </div>
+
+      <div id="page-guru-jadwal" class="content-section" style="display:none;">
+        <div class="table-container">
+          <div class="table-header"><div class="table-title">Jadwal Mengajar Anda</div></div>
+          <div style="padding: 20px; text-align: center; color: var(--sub);">Fitur Jadwal akan dikembangkan di sini...</div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <?!= include('Gru_View_BottomNav'); ?>
+</div>
