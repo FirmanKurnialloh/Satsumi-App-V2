@@ -109,11 +109,52 @@
     .card-status-text { font-size: 10px; font-weight: 700; margin-top: 4px; }
     .card-badge { font-size: 9px; font-weight: 800; padding: 5px 10px; border-radius: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
 
-    .overlay-v { position: fixed; inset: 0; background: var(--bg); z-index: 1000000; display: flex; align-items: center; justify-content: center; cursor: pointer; text-align: center; backdrop-filter: blur(15px); }
+    .overlay-v { position: fixed; inset: 0; background: var(--bg); z-index: 1000000; display: flex; align-items: center; justify-content: center; cursor: pointer; text-align: center; backdrop-filter: blur(15px); transition: all 0.6s cubic-bezier(0.4, 0, 0.2, 1); }
+    .overlay-v.hide { opacity: 0; transform: scale(1.1); pointer-events: none; }
+
     .unlock-btn { width: clamp(80px, 15vw, 120px); height: clamp(80px, 15vw, 120px); background: var(--primary); border-radius: 50%; display: grid; place-items: center; font-size: clamp(30px, 6vw, 50px); margin: 0 auto 20px; box-shadow: 0 0 60px rgba(59, 130, 246, 0.5); animation: pulse 2s infinite; }
     @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.1); box-shadow: 0 0 80px rgba(59, 130, 246, 0.7); } 100% { transform: scale(1); } }
     
-    /* #scanner-input { position: absolute; opacity: 0; top: -1000px; } */
+    .cyber-loader {
+      position: relative;
+      width: 45px;
+      height: 45px;
+      margin: 0 auto 8px;
+    }
+    .cyber-loader::before, .cyber-loader::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 3px solid transparent;
+    }
+    .cyber-loader::before {
+      border-top-color: var(--accent);
+      border-bottom-color: var(--primary);
+      animation: spinCyber 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    }
+    .cyber-loader::after {
+      border-left-color: var(--success);
+      border-right-color: var(--accent);
+      animation: spinCyber 1.5s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite reverse;
+      transform: scale(0.7);
+    }
+    .loading-text {
+      font-weight: 800;
+      color: var(--accent);
+      font-size: 13px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      animation: pulseText 1.5s infinite;
+    }
+    @keyframes spinCyber {
+      100% { transform: rotate(360deg); }
+    }
+    @keyframes pulseText {
+      0%, 100% { opacity: 1; text-shadow: 0 0 10px var(--accent); }
+      50% { opacity: 0.4; text-shadow: none; }
+    }
+
     #scanner-input {
       display: block;
       width: 100%;
@@ -132,13 +173,57 @@
     #scanner-input:focus {
       box-shadow: 0 0 0 2px var(--primary);
     }
+    
     @media (max-width: 900px) {
-      main { grid-template-columns: 1fr; display: flex; flex-direction: column; overflow-y: auto; }
-      .sidebar-v { border-right: none; border-bottom: 1px solid var(--border); max-height: max-content; }
-      .cam-wrapper { max-width: 400px; margin: 0 auto; }
-      .gallery-v { overflow-y: visible; }
-      .award-v { margin-top: 10px; }
-      header { padding: 0 15px; }
+      main { 
+        display: block;
+        overflow-y: auto; 
+        -webkit-overflow-scrolling: touch;
+      }
+      .sidebar-v { 
+        border-right: none; 
+        border-bottom: 1px solid var(--border); 
+        height: auto; 
+        max-height: none;
+        overflow-y: visible; 
+        padding-bottom: 30px; 
+      }
+      .cam-wrapper { 
+        max-width: 100%; 
+        margin: 0 auto; 
+      }
+      .gallery-v { 
+        overflow-y: visible; 
+        height: auto;
+        padding-bottom: 40px;
+      }
+      .award-v { 
+        margin-top: 20px; 
+      }
+      header { 
+        height: auto; 
+        padding: 12px 15px; 
+      }
+    }
+
+    @media (max-width: 480px) {
+      header {
+        flex-direction: column;
+        text-align: center;
+        gap: 8px;
+        padding: 15px;
+      }
+      .clock-box {
+        text-align: center;
+      }
+      .stats-v {
+        grid-template-columns: repeat(2, 1fr); 
+      }
+      .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+      }
     }
   </style>
 </head>
@@ -213,58 +298,64 @@
 </div>
 
 <script>
-  let lastDataCount = 0;
-  let lastScanCode = "";
-  let lastScanTime = 0;
-  let wakeLock = null;
-  let currentDay = new Date().getDate(); 
-  let isProcessing = false;
+  var lastDataCount = 0;
+  var lastScanCode = "";
+  var lastScanTime = 0;
+  var wakeLock = null;
+  var currentDay = new Date().getDate(); 
+  var isProcessing = false;
 
   document.getElementById("unlock-v").addEventListener("click", function() {
     window.initSystem();
   });
 
   document.getElementById("award-img").addEventListener("error", function() {
-    this.src = 'https://ui-avatars.com/api/?background=random&color=fff';
+    this.src = "https://ui-avatars.com/api/?background=random&color=fff";
   });
 
   async function activateKeepAlive() {
     try {
-      document.getElementById("silent-audio").play().catch(e => console.log("Audio play failed"));
+      document.getElementById("silent-audio").play().catch(function(e) { console.log("Audio play failed"); });
       if ('wakeLock' in navigator) {
         wakeLock = await navigator.wakeLock.request('screen');
       }
     } catch (err) { console.log(err); }
   }
 
-  document.addEventListener('visibilitychange', async () => {
-    if (wakeLock !== null && document.visibilityState === 'visible') {
+  document.addEventListener("visibilitychange", async function() {
+    if (wakeLock !== null && document.visibilityState === "visible") {
       if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen');
     }
   });
 
   window.initSystem = function() {
-    document.getElementById("unlock-v").style.display = "none";
-    const inp = document.getElementById("scanner-input");
-    const video = document.getElementById("video-v");
+    var unlockScreen = document.getElementById("unlock-v");
+    unlockScreen.classList.add("hide"); 
+    
+    setTimeout(function() {
+      unlockScreen.style.display = "none";
+    }, 600);
+
+    var inp = document.getElementById("scanner-input");
+    var video = document.getElementById("video-v");
     
     activateKeepAlive();
 
     if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
-      navigator.mediaDevices.getUserMedia({video:{width:320, height:240}}).then(s => { video.srcObject = s; }).catch(err => { alert("Gagal mengakses kamera."); });
+      navigator.mediaDevices.getUserMedia({video:{width:320, height:240}}).then(function(s) { video.srcObject = s; }).catch(function(err) { alert("Gagal mengakses kamera."); });
     }
     
     inp.focus();
     checkFocus();
 
-    setInterval(() => { if(!document.hidden) inp.focus(); }, 1500);
-    document.body.addEventListener("click", () => { inp.focus(); activateKeepAlive(); });
+    setInterval(function() { if(!document.hidden) inp.focus(); }, 1500);
+    document.body.addEventListener("click", function() { inp.focus(); activateKeepAlive(); });
     
     window.startCore();
   };
 
-  const inputTrap = document.getElementById("scanner-input");
-  const camBox = document.getElementById("cam-box-v");
+  var inputTrap = document.getElementById("scanner-input");
+  var camBox = document.getElementById("cam-box-v");
 
   function checkFocus() {
     if(document.activeElement === inputTrap) { 
@@ -274,25 +365,24 @@
     }
   }
 
-  inputTrap.addEventListener("blur", () => {
+  inputTrap.addEventListener("blur", function() {
     checkFocus();
-    setTimeout(() => { checkFocus(); }, 100);
+    setTimeout(function() { checkFocus(); }, 100);
   });
-  inputTrap.addEventListener("focus", () => { checkFocus(); });
-  window.refocusInput = () => { inputTrap.focus(); checkFocus(); };
+  inputTrap.addEventListener("focus", function() { checkFocus(); });
+  window.refocusInput = function() { inputTrap.focus(); checkFocus(); };
 
   function speak(txt) {
     if (window.speechSynthesis) {
       window.speechSynthesis.cancel();
-      const msg = new SpeechSynthesisUtterance(txt);
+      var msg = new SpeechSynthesisUtterance(txt);
       msg.lang = "id-ID";
       window.speechSynthesis.speak(msg);
     }
   }
 
-  // --- LOGIKA TEXT TO SPEECH CERDAS ---
   function getSapaanWaktu() {
-    const hour = new Date().getHours();
+    var hour = new Date().getHours();
     if (hour >= 4 && hour < 11) return "pagi";
     if (hour >= 11 && hour < 15) return "siang";
     if (hour >= 15 && hour < 18) return "sore";
@@ -301,16 +391,16 @@
 
   function generateUcapanNatural(nama, mode, keterangan, status) {
     console.log("Status diterima:", status);
-    const waktu = getSapaanWaktu();
-    const namaPanggilan = nama ? nama.split(" ")[0] : "Bapak Ibu";
+    var waktu = getSapaanWaktu();
+    var namaPanggilan = nama ? nama.split(" ")[0] : "Bapak Ibu";
     
     if (status === 'duplikat') {
-      const tpl = [
-        `Halo ${namaPanggilan}, kamu sudah absen ya.`,
-        `Sistem mencatat kamu sudah presensi sebelumnya, ${namaPanggilan}.`,
-        `Sip! ${namaPanggilan} kamu sudah absen.`
+      var tplDup = [
+        "Halo " + namaPanggilan + ", kamu sudah absen ya.",
+        "Sistem mencatat kamu sudah presensi sebelumnya, " + namaPanggilan + ".",
+        "Sip! " + namaPanggilan + " kamu sudah absen."
       ];
-      return tpl[Math.floor(Math.random() * tpl.length)];
+      return tplDup[Math.floor(Math.random() * tplDup.length)];
     }
 
     if (status !== 'success') return "Maaf, data tidak ditemukan dalam sistem.";
@@ -320,48 +410,47 @@
 
     if (mode.includes('masuk')) {
       if (keterangan.includes('terlambat')) {
-        const tpl = [
-          `Selamat ${waktu} ${namaPanggilan}. Kamu tercatat terlambat hari ini.`,
-          `Halo ${namaPanggilan}. Mohon perhatikan waktu kehadiran besok ya.`,
-          `Selamat ${waktu} ${namaPanggilan}. Besok usahakan datang lebih awal ya.`
+        var tplInLate = [
+          "Selamat " + waktu + " " + namaPanggilan + ". Kamu tercatat terlambat hari ini.",
+          "Halo " + namaPanggilan + ". Mohon perhatikan waktu kehadiran besok ya.",
+          "Selamat " + waktu + " " + namaPanggilan + ". Besok usahakan datang lebih awal ya."
         ];
-        return tpl[Math.floor(Math.random() * tpl.length)];
+        return tplInLate[Math.floor(Math.random() * tplInLate.length)];
       } else {
-        const tpl = [
-          `Selamat ${waktu} ${namaPanggilan}, selamat beraktivitas!`,
-          `Halo ${namaPanggilan}, semangat untuk hari ini ya!`,
-          `Terima kasih ${namaPanggilan}, semoga harimu menyenangkan hari ini.`
+        var tplIn = [
+          "Selamat " + waktu + " " + namaPanggilan + ", selamat beraktivitas!",
+          "Halo " + namaPanggilan + ", semangat untuk hari ini ya!",
+          "Terima kasih " + namaPanggilan + ", semoga harimu menyenangkan hari ini."
         ];
-        return tpl[Math.floor(Math.random() * tpl.length)];
+        return tplIn[Math.floor(Math.random() * tplIn.length)];
       }
     } else if (mode.includes('pulang')) {
       if (keterangan.includes('cepat') || keterangan.includes('awal')) {
-        const tpl = [
-          `Halo ${namaPanggilan}, kamu tercatat pulang lebih awal.`,
-          `Hati-hati ${namaPanggilan}, pastikan sudah konfirmasi izin ya.`,
-          `${namaPanggilan}, kamu pulang lebih cepat hari ini. Hati-hati di jalan.`
+        var tplOutEarly = [
+          "Halo " + namaPanggilan + ", kamu tercatat pulang lebih awal.",
+          "Hati-hati " + namaPanggilan + ", pastikan sudah konfirmasi izin ya.",
+          namaPanggilan + ", kamu pulang lebih cepat hari ini. Hati-hati di jalan."
         ];
-        return tpl[Math.floor(Math.random() * tpl.length)];
+        return tplOutEarly[Math.floor(Math.random() * tplOutEarly.length)];
       } else {
-        const tpl = [
-          `Terima kasih ${namaPanggilan}, hati-hati di jalan pulang.`,
-          `Kerja bagus hari ini ${namaPanggilan}, selamat beristirahat.`,
-          `Sampai jumpa besok ${namaPanggilan}, hati-hati di jalan.`
+        var tplOut = [
+          "Terima kasih " + namaPanggilan + ", hati-hati di jalan pulang.",
+          "Kerja bagus hari ini " + namaPanggilan + ", selamat beristirahat.",
+          "Sampai jumpa besok " + namaPanggilan + ", hati-hati di jalan."
         ];
-        return tpl[Math.floor(Math.random() * tpl.length)];
+        return tplOut[Math.floor(Math.random() * tplOut.length)];
       }
     } else if (mode.includes('lembur')) {
-      const tpl = [
-        `Semangat lembur ${namaPanggilan}, jangan lupa jaga kesehatan ya.`,
-        `Terima kasih atas dedikasinya ${namaPanggilan}.`,
-        `Kerja keras yang luar biasa ${namaPanggilan}, semangat lembur!`
+      var tplLembur = [
+        "Semangat lembur " + namaPanggilan + ", jangan lupa jaga kesehatan ya.",
+        "Terima kasih atas dedikasinya " + namaPanggilan + ".",
+        "Kerja keras yang luar biasa " + namaPanggilan + ", semangat lembur!"
       ];
-      return tpl[Math.floor(Math.random() * tpl.length)];
+      return tplLembur[Math.floor(Math.random() * tplLembur.length)];
     }
 
-    return `Presensi berhasil, ${namaPanggilan}.`;
+    return "Presensi berhasil, " + namaPanggilan + ".";
   }
-  // ------------------------------------
 
   window.login = function() {
     google.script.run.withSuccessHandler(function(url) {
@@ -370,26 +459,26 @@
   };
 
   window.startCore = function() {
-    setInterval(() => {
-      const d = new Date();
+    setInterval(function() {
+      var d = new Date();
       document.getElementById("jam-v").innerText = d.toLocaleTimeString("id-ID", {hour12:false});
       document.getElementById("tgl-v").innerText = d.toLocaleDateString("id-ID", {weekday:'long', day:'numeric', month:'long', year:'numeric'});
       
       if (d.getDate() !== currentDay) { window.location.reload(); }
     }, 1000);
 
-    google.script.run.withSuccessHandler(res => {
+    google.script.run.withSuccessHandler(function(res) {
       if(res && res.info) document.getElementById("ticker-text-v").innerText = (res.info + " • ").repeat(5);
       if(res && res.nama) {
-        const brand = document.querySelector(".brand h1");
-        if(brand) brand.innerHTML = `SIPGTK <span style="font-size: clamp(10px, 1.2vw, 12px); display:block; color:#64748b; font-family:'Plus Jakarta Sans'">Sistem Informasi Presensi <span>${res.nama}</span></span>`;
+        var brand = document.querySelector(".brand h1");
+        if(brand) brand.innerHTML = "SIPGTK <span style='font-size: clamp(10px, 1.2vw, 12px); display:block; color:#64748b; font-family:\"Plus Jakarta Sans\"'>Sistem Informasi Presensi <span>" + res.nama + "</span></span>";
       }
     }).getPresensiScannerSettings();
 
-    setInterval(() => {
-      google.script.run.withSuccessHandler(res => {
+    setInterval(function() {
+      google.script.run.withSuccessHandler(function(res) {
         if(res && res.mode){
-          const m = document.getElementById("mode-v");
+          var m = document.getElementById("mode-v");
           m.innerText = res.mode;
 
           if(res.mode.includes("MASUK"))      m.style.background = "#10b981";
@@ -402,20 +491,20 @@
       }).getCurrentSessionMode();
     }, 5000);
 
-    document.getElementById("scanner-input").addEventListener("keydown", e => {
+    document.getElementById("scanner-input").addEventListener("keydown", function(e) {
       if(e.key === "Enter") {
-        const val = e.target.value.trim();
+        var val = e.target.value.trim();
         e.target.value = "";
         if(val.length > 3) window.executeScan(val);
       }
     });
 
     window.refreshUI(); 
-    setInterval(() => { window.refreshUI(); }, 5000);
+    setInterval(function() { window.refreshUI(); }, 5000);
   };
 
   window.executeScan = function(nik) {
-    const now = Date.now();
+    var now = Date.now();
     if(nik === lastScanCode && (now - lastScanTime < 3000)) return; 
     lastScanCode = nik;
     lastScanTime = now;
@@ -423,89 +512,90 @@
     if(isProcessing) return;
     isProcessing = true;
 
-    const rb = document.getElementById("res-box-v");
+    var rb = document.getElementById("res-box-v");
     
-    const defaultStatus = `
-      <div style="font-size:30px; margin-bottom: 5px;">📡</div>
-      <div style="font-weight:800; font-size:clamp(14px, 1.5vw, 16px); letter-spacing:1px; color: var(--accent);">SISTEM SIAP MEMINDAI<br><span style="font-size: 10px; font-weight: 600; color: #94a3b8;">Tunjukan Kartu QR ke mesin</span></div>
-      <div id="mode-v" style="margin-top:8px; padding:5px 12px; border-radius:15px; font-size:9px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; display:inline-block; background:#1e293b; color:#fff;">—</div>
-    `;
+    var defaultStatus = "<div style='font-size:30px; margin-bottom: 5px;'>📡</div>" +
+      "<div style='font-weight:800; font-size:clamp(14px, 1.5vw, 16px); letter-spacing:1px; color: var(--accent);'>SISTEM SIAP MEMINDAI<br><span style='font-size: 10px; font-weight: 600; color: #94a3b8;'>Tunjukan Kartu QR ke mesin</span></div>" +
+      "<div id='mode-v' style='margin-top:8px; padding:5px 12px; border-radius:15px; font-size:9px; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; display:inline-block; background:#1e293b; color:#fff;'>—</div>";
 
-    rb.innerHTML = `<div style="font-weight:800; color:var(--accent); font-size: 16px; animation: pulse 1.5s infinite;">MEMPROSES...</div>`;
+    rb.innerHTML = "<div style='display:flex; flex-direction:column; justify-content:center; align-items:center; height:100%;'>" +
+                   "<div class='cyber-loader'></div>" +
+                   "<div class='loading-text'>MEMVERIFIKASI...</div>" +
+                   "</div>";
     
-    const cvs = document.getElementById("canvas-v");
-    const video = document.getElementById("video-v");
-    const ctx = cvs.getContext("2d");
+    var cvs = document.getElementById("canvas-v");
+    var video = document.getElementById("video-v");
+    var ctx = cvs.getContext("2d");
     ctx.drawImage(video, 0, 0, 320, 240);
-    const photo = cvs.toDataURL("image/jpeg", 0.4);
+    var photo = cvs.toDataURL("image/jpeg", 0.4);
 
     google.script.run
-      .withSuccessHandler(res => {
+      .withSuccessHandler(function(res) {
         isProcessing = false;
-        let ucapan = "";
+        var ucapan = "";
 
         if (res && res.status === 'success') {
-          rb.innerHTML = `<div style="color:var(--success); font-size:15px; font-weight:800; padding: 10px;">✓ Berhasil: ${res.nama || res.message}</div>`;
+          rb.innerHTML = "<div style='color:var(--success); font-size:15px; font-weight:800; padding: 10px;'>✓ Berhasil: " + (res.nama || res.message) + "</div>";
           ucapan = generateUcapanNatural(res.nama, res.mode, res.keterangan, 'success');
           speak(ucapan);
-          setTimeout(() => window.refreshUI(), 500);
+          setTimeout(function() { window.refreshUI(); }, 500);
 
         } else if (res && res.status === 'duplikat') {
-          rb.innerHTML = `<div style="color:var(--warning); font-size:14px; font-weight:800; padding: 10px;">⚠ ${res.message || 'Anda sudah scan'}</div>`;
+          rb.innerHTML = "<div style='color:var(--warning); font-size:14px; font-weight:800; padding: 10px;'>⚠ " + (res.message || 'Anda sudah scan') + "</div>";
           ucapan = generateUcapanNatural(res.nama, res.mode, res.keterangan, 'duplikat');
           speak(ucapan);
 
         } else {
-          rb.innerHTML = `<div style="color:var(--danger); font-size:14px; font-weight:800; padding: 10px;">✗ ${res ? (res.pesan || res.message) : 'Gagal memproses'}</div>`;
+          rb.innerHTML = "<div style='color:var(--danger); font-size:14px; font-weight:800; padding: 10px;'>✗ " + (res ? (res.pesan || res.message) : 'Gagal memproses') + "</div>";
           ucapan = generateUcapanNatural("", "", "", "error");
           speak(ucapan);
         }
 
-        setTimeout(() => { rb.innerHTML = defaultStatus; }, 3000);
+        setTimeout(function() { rb.innerHTML = defaultStatus; }, 3000);
       })
-      .withFailureHandler(err => {
+      .withFailureHandler(function(err) {
         isProcessing = false;
-        console.error('Presensi error:', err);
-        rb.innerHTML = `<div style="color:var(--danger); font-size:14px; padding: 10px;">Error: Sistem tidak merespon</div>`;
+        console.error("Presensi error:", err);
+        rb.innerHTML = "<div style='color:var(--danger); font-size:14px; padding: 10px;'>Error: Sistem tidak merespon</div>";
         speak("Maaf, sistem sedang mengalami gangguan.");
-        setTimeout(() => { rb.innerHTML = defaultStatus; }, 3000);
+        setTimeout(function() { rb.innerHTML = defaultStatus; }, 3000);
       })
       .simpanPresensi(nik, photo);
   };
 
   window.refreshUI = function() {
-    google.script.run.withSuccessHandler(data => {
+    google.script.run.withSuccessHandler(function(data) {
       if(!data) return;
-      const currentCount = data.logs ? data.logs.length : 0;
+      var currentCount = data.logs ? data.logs.length : 0;
       if (currentCount === lastDataCount) return; 
       
       lastDataCount = currentCount;
-      const list = document.getElementById("list-v");
+      var list = document.getElementById("list-v");
       if (!list) return;
       
       list.innerHTML = "";
       
       if (data.logs && data.logs.length > 0) {
-        data.logs.forEach((log, index) => {
-          const inisial = log.nama ? log.nama.charAt(0).toUpperCase() : "?";
-          const fallbackAvatar = `https://ui-avatars.com/api/?name=${inisial}&background=1e293b&color=fff&size=200`;
+        data.logs.forEach(function(log, index) {
+          var inisial = log.nama ? log.nama.charAt(0).toUpperCase() : "?";
+          var fallbackAvatar = "https://ui-avatars.com/api/?name=" + inisial + "&background=1e293b&color=fff&size=200";
           
-          let img = fallbackAvatar;
+          var img = fallbackAvatar;
           if (log.foto && typeof log.foto === 'string' && log.foto.length > 10) {
             img = log.foto;
             if (img.includes("drive.google.com")) {
-               const matchID = img.match(/[-\w]{25,}/);
-               if (matchID) img = `https://drive.google.com/thumbnail?id=${matchID[0]}`;          
+               var matchID = img.match(/[-\w]{25,}/);
+               if (matchID) img = "https://drive.google.com/thumbnail?id=" + matchID[0];          
             }
           }
 
-          let teksWaktu = String(log.waktu);
-          let ambilJam = teksWaktu.match(/\d{2}:\d{2}(:\d{2})?/);
-          let waktuBersih = ambilJam ? ambilJam[0] : teksWaktu; 
+          var teksWaktu = String(log.waktu);
+          var ambilJam = teksWaktu.match(/\d{2}:\d{2}(:\d{2})?/);
+          var waktuBersih = ambilJam ? ambilJam[0] : teksWaktu; 
           
-          let badgeStyle = "background:rgba(255,255,255,0.05); color:#fff;";
-          let statusColor = "#94a3b8";
-          const status = log.mode ? log.mode.toLowerCase() : '';
+          var badgeStyle = "background:rgba(255,255,255,0.05); color:#fff;";
+          var statusColor = "#94a3b8";
+          var status = log.mode ? log.mode.toLowerCase() : '';
           
           if (status === 'masuk') { 
             badgeStyle = "background:rgba(16,185,129,0.15); color:#34d399; border: 1px solid rgba(16,185,129,0.2);"; 
@@ -522,23 +612,22 @@
             badgeStyle = "background:rgba(239,68,68,0.15); color:#f87171; border: 1px solid rgba(239,68,68,0.2);";
           }
 
-          const cardHTML = `
-            <div class="card-v" style="animation-delay: ${index * 0.05}s">
-              <div class="card-img-box">
-                <img src="${img}" alt="User" onerror="this.onerror=null; this.src='${fallbackAvatar}';">
-              </div>
-              <div class="card-body">
-                <div class="card-name">${log.nama}</div>
-                <div class="card-role">${log.jabatan}</div>
-                <div class="card-meta">
-                  <div style="display:flex; flex-direction:column;">
-                    <span class="card-time">${waktuBersih}</span>
-                    <span class="card-status-text" style="color:${statusColor}">${log.keterangan}</span>
-                  </div>
-                  <span class="card-badge" style="${badgeStyle}">${log.mode}</span>
-                </div>
-              </div>
-            </div>`;
+          var cardHTML = "<div class='card-v' style='animation-delay: " + (index * 0.05) + "s'>" +
+            "<div class='card-img-box'>" +
+              "<img src='" + img + "' alt='User' onerror=\"this.onerror=null; this.src='" + fallbackAvatar + "';\">" +
+            "</div>" +
+            "<div class='card-body'>" +
+              "<div class='card-name'>" + log.nama + "</div>" +
+              "<div class='card-role'>" + log.jabatan + "</div>" +
+              "<div class='card-meta'>" +
+                "<div style='display:flex; flex-direction:column;'>" +
+                  "<span class='card-time'>" + waktuBersih + "</span>" +
+                  "<span class='card-status-text' style='color:" + statusColor + "'>" + log.keterangan + "</span>" +
+                "</div>" +
+                "<span class='card-badge' style='" + badgeStyle + "'>" + log.mode + "</span>" +
+              "</div>" +
+            "</div>" +
+          "</div>";
           list.insertAdjacentHTML('beforeend', cardHTML);
         });
 
@@ -553,21 +642,21 @@
         }
         
         if(data.first) {
-          const award = document.getElementById("award-v");
+          var award = document.getElementById("award-v");
           award.style.display = "flex";
           document.getElementById("award-name").innerText = data.first.nama;
-          document.getElementById("award-img").src = (data.first.foto && data.first.foto.length > 50) ? data.first.foto : `https://ui-avatars.com/api/?name=${data.first.nama.charAt(0)}&background=random&color=fff`;
+          document.getElementById("award-img").src = (data.first.foto && data.first.foto.length > 50) ? data.first.foto : ("https://ui-avatars.com/api/?name=" + data.first.nama.charAt(0) + "&background=random&color=fff");
         }
       }
     }).getScannerData();
   };
 
   function updateStatSmooth(id, value) {
-    const el = document.getElementById(id);
+    var el = document.getElementById(id);
     if (el && el.innerText != value) {
       el.style.transform = "scale(1.2)";
       el.style.transition = "0.3s";
-      setTimeout(() => {
+      setTimeout(function() {
         el.innerText = value || 0;
         el.style.transform = "scale(1)";
       }, 1500);
@@ -583,7 +672,7 @@
       script: {
         run: {
           withSuccessHandler: function(onSuccess) {
-            const runner = {
+            var runner = {
               withFailureHandler: function(onFailure) { return runner; },
               getPresensiScannerSettings: function() { onSuccess({ info: 'Testing Mode', nama: 'Kiosk Scanner' }); return runner; },
               getScannerData: function() { onSuccess({ stats: { masuk: 0, pulang: 0, izin: 0, sakit: 0, lembur: 0 }, logs: [], first: null }); return runner; },
@@ -594,7 +683,7 @@
             return runner;
           },
           withFailureHandler: function(onFailure) {
-            const runner = {
+            var runner = {
               withSuccessHandler: function(onSuccess) { return runner; },
               getPresensiScannerSettings: function() { return runner; },
               getScannerData: function() { return runner; },
