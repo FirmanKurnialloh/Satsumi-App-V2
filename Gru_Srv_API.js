@@ -7,8 +7,9 @@
 function checkGuruGatekeeper_(token) {
   if (!token) throw new Error("Akses Ditolak: Sesi kosong.");
   try {
-    const decoded = Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString();
-    const [tokenNik] = decoded.split("|");
+    const parsed = parseSessionToken_(token);
+    if (!parsed.valid) throw new Error('Sesi tidak valid.');
+    const tokenNik = parsed.nik;
     const dbUser = getUserByNik_(tokenNik); 
     if (!dbUser || !dbUser.role.toUpperCase().includes('GURU')) {
       throw new Error("Akses Ditolak: Area Khusus Guru.");

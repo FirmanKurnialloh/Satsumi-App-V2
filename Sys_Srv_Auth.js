@@ -33,10 +33,10 @@ function checkLogin(creds) {
 function validateSessionToken(token, clientUser) {
   if (!token || !clientUser) return { valid: false, reason: "Token/Data hilang." };
   try {
-    const decoded = Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString();
-    const [tokenNik, tokenTime] = decoded.split("|");
-    const now = new Date().getTime();
-    if (now - parseInt(tokenTime) > 24 * 60 * 60 * 1000) return { valid: false, reason: "Sesi kedaluwarsa. Login ulang." };
+    const parsed = parseSessionToken_(token);
+    if (!parsed.valid) return { valid: false, reason: parsed.reason || "Token tidak valid." };
+    const tokenNik = parsed.nik;
+    const tokenTime = parsed.t;
 
     const dbUser = getUserByNik_(tokenNik);
     if (!dbUser) return { valid: false, reason: "Akun tidak ditemukan di Database." };
@@ -47,6 +47,25 @@ function validateSessionToken(token, clientUser) {
 
     return { valid: true, freshUser: dbUser };
   } catch (e) { return { valid: false, reason: "Token Ilegal/Rusak." }; }
+}
+
+function parseSessionToken_(token) {
+  try {
+    const parts = String(token).split('.');
+    if (parts.length !== 2) return { valid: false, reason: 'Format token salah.' };
+    const payloadB64 = parts[0];
+    const sigB64 = parts[1];
+    const payloadStr = Utilities.newBlob(Utilities.base64Decode(payloadB64)).getDataAsString();
+
+    const signature = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_256, payloadStr, getSecretKey_());
+    const expectedSig = Utilities.base64Encode(signature);
+    if (expectedSig !== sigB64) return { valid: false, reason: 'Signature token tidak cocok.' };
+
+    const obj = JSON.parse(payloadStr);
+    const now = new Date().getTime();
+    if (now - parseInt(obj.t) > 24 * 60 * 60 * 1000) return { valid: false, reason: 'Sesi kedaluwarsa. Login ulang.' };
+    return { valid: true, nik: obj.nik, t: obj.t };
+  } catch (e) { return { valid: false, reason: 'Token parse error.' }; }
 }
 
 function getUserByNik_(nik) {
@@ -64,16 +83,20 @@ function extractUserFromRow_(row) {
 
 function createSessionToken_(nik) {
   const timestamp = new Date().getTime();
-  const secret = "SATSUMI_INTERNAL_SERVER_SECRET"; 
-  return Utilities.base64Encode(`${nik}|${timestamp}|${secret}`);
+  const payload = JSON.stringify({ nik: nik, t: timestamp });
+  const payloadB64 = Utilities.base64Encode(payload);
+  const signature = Utilities.computeHmacSignature(Utilities.MacAlgorithm.HMAC_SHA_256, payload, getSecretKey_());
+  const sigB64 = Utilities.base64Encode(signature);
+  return payloadB64 + '.' + sigB64;
 }
 
 // --- FUNGSI GANTI PASSWORD GLOBAL ---
 function changeMyPassword(token, form) {
   if (!token) return { status: 'error', message: 'Akses ditolak: Sesi tidak valid.' };
   try {
-    const decoded = Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString();
-    const [tokenNik] = decoded.split("|");
+    const parsed = parseSessionToken_(token);
+    if (!parsed.valid) return { status: 'error', message: 'Sesi tidak valid.' };
+    const tokenNik = parsed.nik;
     
     // Keamanan: Pastikan NIK di token cocok dengan NIK yang mau diganti (Tidak bisa ganti sandi orang lain)
     if (String(tokenNik) !== String(form.nik)) {

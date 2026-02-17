@@ -1,15 +1,31 @@
 <script>
   // Variabel Global
-  const STORAGE = localStorage; 
-  const AES_KEY = "SATSUMI_KEY_FINAL_V99"; 
+  const STORAGE = localStorage;
+
+  /**
+   * Safe getter for BASE_URL (injected by server, fallback to location.pathname)
+   */
+  function getBaseUrl() {
+    try {
+      return (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : location.pathname;
+    } catch(e) {
+      return location.pathname;
+    }
+  }
 
   // Keamanan & Kriptografi
   function encryptAES(data) {
-    try { return CryptoJS.AES.encrypt(JSON.stringify(data), AES_KEY).toString(); } catch(e) { return null; }
+    try {
+      const token = STORAGE.getItem("sess_t");
+      if (!token) return null;
+      return CryptoJS.AES.encrypt(JSON.stringify(data), token).toString();
+    } catch(e) { return null; }
   }
   function decryptAES(cipher) {
     try {
-      const bytes = CryptoJS.AES.decrypt(cipher, AES_KEY);
+      const token = STORAGE.getItem("sess_t");
+      if (!token) return null;
+      const bytes = CryptoJS.AES.decrypt(cipher, token);
       const str = bytes.toString(CryptoJS.enc.Utf8);
       return str ? JSON.parse(str) : null;
     } catch(e) { return null; }
@@ -63,4 +79,80 @@
       else { icon.classList.replace('bi-moon-stars-fill', 'bi-sun-fill'); }
     }
   }
+
+  // --- Early scanner redirect: if ?v=scanner is present, perform a top-level redirect
+  (function earlyScannerRedirect(){
+    try {
+      const sp = new URLSearchParams(location.search);
+      const v = sp.get('v');
+      if (v && v.toLowerCase() === 'scanner') {
+        // If we're not already on the canonical BASE_URL?v=scanner, redirect there.
+        try {
+          if (typeof BASE_URL !== 'undefined' && location.href !== (BASE_URL + '?v=scanner')) {
+            location.replace(BASE_URL + '?v=scanner');
+          }
+        } catch(e) {
+          // fallback simple redirect
+          if (location.search.indexOf('v=scanner') === -1) location.replace(location.pathname + '?v=scanner');
+        }
+      }
+    } catch(e) { /* ignore */ }
+  })();
+
+  // --- Simple hash-based routing support ---
+  function handleHashNavigation() {
+    try {
+      const h = (location.hash || '').replace('#','');
+      if (!h) return;
+      if (typeof navTo === 'function') navTo(h);
+    } catch(e) { console.warn('Hash nav failed', e); }
+  }
+
+  window.addEventListener('hashchange', () => {
+    handleHashNavigation();
+  });
+
+  window.addEventListener('DOMContentLoaded', () => {
+    try {
+      const sp = new URLSearchParams(location.search);
+      const v = sp.get('v');
+      if (!v) {
+        // no query params – ensure login view is visible only when session is not present
+        try {
+          const encUser = STORAGE.getItem('sess_u_aes');
+          const token = STORAGE.getItem('sess_t');
+          if (!encUser || !token) switchView('view-login');
+        } catch(e) { /* ignore if not available */ }
+      }
+    } catch(e) { console.warn('Query routing failed', e); }
+
+    // If a hash is present on load, navigate to it
+    handleHashNavigation();
+    // Sanitize inline onclick attributes by rebinding them as event listeners.
+    // This prevents quoting issues and makes event handling more robust.
+    try {
+      document.querySelectorAll('[onclick]').forEach(el => {
+        const src = el.getAttribute('onclick') || '';
+        const originalText = el.tagName + '#' + (el.id || el.className);
+        el.removeAttribute('onclick');
+        
+        el.addEventListener('click', (ev) => {
+          try {
+            // Safe execution with global window scope, includes BASE_URL and URL_PARAMS
+            new Function('el', 'event', 'with(window) { ' + src + ' }')(el, ev);
+          } catch(e) { 
+            // Enhanced error logging with function context
+            const fnMatch = src.match(/^([a-zA-Z_$][0-9a-zA-Z_$]*)/);
+            const fnName = fnMatch ? fnMatch[1] : 'unknown';
+            if (e.message.includes('is not defined')) {
+              console.warn(`Onclick execution failed - ${fnName}() on ${originalText}:`, e.message);
+              console.log('Available globals:', Object.keys(window).filter(k => typeof window[k] === 'function').slice(0, 10));
+            } else {
+              console.warn('Sanitized onclick execution failed:', e, 'Source:', src); 
+            }
+          }
+        });
+      });
+    } catch(e) { console.warn('Inline onclick sanitation failed', e); }
+  });
 </script>

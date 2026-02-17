@@ -18,12 +18,26 @@
     
     const encUser = STORAGE.getItem("sess_u_aes");
     const token = STORAGE.getItem("sess_t");
-    const v = (typeof URL_PARAMS !== 'undefined') ? URL_PARAMS.v : null;
+    // Prefer server-side `URL_PARAMS` but fall back to actual URL search params
+    let v = null;
+    try {
+      if (typeof URL_PARAMS !== 'undefined' && URL_PARAMS && URL_PARAMS.v) v = URL_PARAMS.v;
+    } catch(e) { /* ignore */ }
+    try {
+      if (!v) {
+        const sp = new URLSearchParams(location.search);
+        v = sp.get('v');
+      }
+    } catch(e) { /* ignore */ }
 
     // --- [ROUTING] BYPASS KHUSUS SCANNER/KIOSK (PUBLIC) ---
     if (v === 'scanner' || v === 'kiosk') {
-      loadSdmModule(v); 
-      return; 
+      // If an early request already started loading the module, skip duplicate call
+      if (!window.__sdmRequested) window.__sdmRequested = true;
+      if (!window.__sdmLoaded) {
+        try { loadSdmModule(v); window.__sdmLoaded = true; } catch(e) { console.warn('loadSdmModule failed on onload', e); }
+      }
+      return;
     }
 
     // --- [ROUTING] CEK SESI USER ---
@@ -46,6 +60,13 @@
         })
         .validateSessionToken(token, user);
     } else {
+      // If v=scanner was passed via URL but not handled above, ensure scanner loads
+      if (v === 'scanner' || v === 'kiosk') {
+        if (!window.__sdmRequested) window.__sdmRequested = true;
+        try { if (!window.__sdmLoaded) { loadSdmModule(v); window.__sdmLoaded = true; } } catch(e) { console.warn('late loadSdmModule failed', e); }
+        return;
+      }
+
       // Delay sedikit untuk efek transisi halus
       setTimeout(() => {
         if (typeof switchView === "function") switchView('view-login');
@@ -91,40 +112,56 @@
       container.style.display = 'block';
     }
 
-    let targetFile = (v === 'scanner' || v === 'kiosk') ? 'Sys_View_Scanner' : 'Adm_View_SDM';
+    // For scanner/kiosk modes we must load the page as a top-level document.
+    if (v === 'scanner' || v === 'kiosk') {
+      try {
+        const target = (typeof BASE_URL !== 'undefined') ? (BASE_URL + '?v=' + v) : (location.pathname + '?v=' + v);
+        const a = document.createElement('a');
+        a.href = target;
+        a.target = '_top';
+        document.body.appendChild(a);
+        a.click();
+        return;
+      } catch(e) {
+        console.warn('Top-level redirect for scanner failed, fallback to location', e);
+        location.href = (typeof BASE_URL !== 'undefined') ? (BASE_URL + '?v=' + v) : (location.pathname + '?v=' + v);
+        return;
+      }
+    }
 
+    // For other modules, fetch HTML and inject only safe external scripts.
+    let targetFile = 'Adm_View_SDM';
     google.script.run
       .withSuccessHandler(function(html) {
         if (!container) return;
         container.innerHTML = html;
-        
-        if(loading) {
+
+        if (loading) {
           loading.classList.remove('active');
           loading.style.display = 'none';
         }
 
-        // --- RESUSCITATOR: Menjalankan script di dalam HTML yang disuntik ---
-        const scripts = container.querySelectorAll("script");
-        scripts.forEach((oldScript) => {
-          const newScript = document.createElement("script");
-          // Salin semua atribut script asli (id, src, type, dll)
-          Array.from(oldScript.attributes).forEach(attr => {
-            newScript.setAttribute(attr.name, attr.value);
-          });
-          
-          // Gunakan textContent untuk inline script (mencegah error 'class' & syntax)
-          if (!oldScript.src) {
-            newScript.textContent = oldScript.textContent;
+        // Load only external scripts referenced by the returned HTML to avoid
+        // executing modern inline module code in the parent context.
+        const scripts = container.querySelectorAll('script');
+        scripts.forEach(s => {
+          try {
+            if (s.src) {
+              const ext = document.createElement('script');
+              if (s.type) ext.type = s.type;
+              ext.src = s.src;
+              document.head.appendChild(ext);
+            }
+          } catch (e) {
+            console.warn('Failed to append external script', e);
           }
-          
-          document.head.appendChild(newScript);
-          oldScript.parentNode.removeChild(oldScript);
+          if (s.parentNode) s.parentNode.removeChild(s);
         });
       })
       .withFailureHandler(err => {
-        console.error("Gagal load modul " + targetFile + ":", err);
-        if(loading) loading.classList.remove('active');
-        showToast("Gagal memuat sistem.", "error");
+        console.error('Gagal load modul ' + targetFile + ':', err);
+        if (loading) loading.classList.remove('active');
+        showToast('Gagal memuat sistem.', 'error');
       })
       .include(targetFile);
   }
@@ -144,14 +181,26 @@
     google.script.run
       .withSuccessHandler(res => {
         if (res.status === 'success') {
-          STORAGE.setItem("sess_u_aes", encryptAES(res.user));
           STORAGE.setItem("sess_t", res.token);
+          STORAGE.setItem("sess_u_aes", encryptAES(res.user));
           if (typeof showLoading === "function") showLoading("LOGIN BERHASIL...");
           
           setTimeout(() => {
             const a = document.createElement('a');
-            const targetV = (typeof URL_PARAMS !== 'undefined' && URL_PARAMS.v) ? "?v=" + URL_PARAMS.v : "";
-            a.href = BASE_URL + targetV;
+            // Prefer server-side URL_PARAMS but fall back to actual URL search params
+            let targetV = '';
+            try {
+              if (typeof URL_PARAMS !== 'undefined' && URL_PARAMS && URL_PARAMS.v) targetV = '?v=' + URL_PARAMS.v;
+            } catch(e) {}
+            try {
+              if (!targetV) {
+                const sp = new URLSearchParams(location.search);
+                const v2 = sp.get('v');
+                if (v2) targetV = '?v=' + v2;
+              }
+            } catch(e) {}
+            const baseUrl = (typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : location.pathname;
+            a.href = baseUrl + targetV;
             a.target = "_top"; 
             document.body.appendChild(a);
             a.click();
@@ -214,10 +263,16 @@
     closeLogoutModal();
     if (typeof showLoading === "function") showLoading("SEDANG KELUAR...");
     
-    const a = document.createElement('a');
-    a.href = BASE_URL + "?page=login";
-    a.target = "_top"; 
-    document.body.appendChild(a);
-    a.click();
+    try {
+      const baseUrl = (typeof getBaseUrl === 'function') ? getBaseUrl() : ((typeof BASE_URL !== 'undefined' && BASE_URL) ? BASE_URL : location.pathname);
+      const a = document.createElement('a');
+      a.href = baseUrl;
+      a.target = "_top"; 
+      document.body.appendChild(a);
+      a.click();
+    } catch(e) {
+      console.error('Logout redirect failed:', e);
+      location.href = location.pathname;
+    }
   }
 </script>

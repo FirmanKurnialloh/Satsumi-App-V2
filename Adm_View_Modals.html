@@ -1,7 +1,7 @@
 <div id="modal-add-user" class="modal-overlay">
   <div class="modal-card" style="max-width: 400px; text-align: left;">
     <h3 class="modal-title">Tambah User Baru</h3>
-    <p class="modal-desc">Password default: <b>123456</b></p>
+    <p class="modal-desc">Password akan dibuat secara otomatis. Minta pengguna mengganti pada login pertama.</p>
     <form onsubmit="handleUserSubmit(event)">
       <div class="input-wrapper"><input type="number" id="new-nik" placeholder="NIK" required></div>
       <div class="input-wrapper"><input type="text" id="new-nama" placeholder="Nama Lengkap" required></div>
@@ -56,7 +56,7 @@
       <i class="bi bi-key-fill" style="font-size: 30px; color: #f59e0b;"></i>
     </div>
     <h3 class="modal-title">Reset Password?</h3>
-    <p class="modal-desc">Password untuk <b id="reset-target-name" style="color: var(--text);">User</b> akan dikembalikan ke default: <b>123456</b></p>
+    <p class="modal-desc">Password untuk <b id="reset-target-name" style="color: var(--text);">User</b> akan direset ke password sementara. Minta pengguna mengganti setelah login.</p>
     <input type="hidden" id="reset-target-nik">
     <div class="modal-actions">
       <button class="btn btn-cancel" onclick="closeResetModal()">Batal</button>
@@ -78,4 +78,19 @@
       <button class="btn" style="background: var(--danger); color: white;" onclick="confirmDeleteUser()">Ya, Hapus</button>
     </div>
   </div>
+
+    <div id="modal-temp-pass" class="modal-overlay">
+      <div class="modal-card" style="max-width:420px; text-align:center;">
+        <h3 class="modal-title">Password Sementara</h3>
+        <p class="modal-desc" style="margin-bottom:12px;">Berikan password ini kepada pengguna. Password hanya ditampilkan sekali.</p>
+        <div style="background:var(--input-bg); padding:16px; border-radius:8px; border:1px solid var(--border); margin-bottom:12px;">
+          <div style="font-family:monospace; font-size:18px; font-weight:700;" id="temp-pass-value">-</div>
+          <div style="font-size:12px; color:var(--sub);">NIK: <span id="temp-pass-nik">-</span> &nbsp; | &nbsp; Nama: <span id="temp-pass-name">-</span></div>
+        </div>
+        <div class="modal-actions" style="justify-content:center; gap:10px;">
+          <button class="btn btn-cancel" onclick="closeTempPassModal()">Tutup</button>
+          <button class="btn" style="background:var(--primary); color:white;" onclick="copyTempPass()">Salin Password</button>
+        </div>
+      </div>
+    </div>
 </div>

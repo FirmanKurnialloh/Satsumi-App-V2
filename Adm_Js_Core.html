@@ -52,6 +52,11 @@
     document.getElementById('page-title').innerText = titles[pageId] || 'Dashboard';
 
     const token = STORAGE.getItem("sess_t");
+    // update browser URL hash so page can be linked/bookmarked
+    try {
+      const targetHash = '#' + pageId;
+      if (location.hash !== targetHash) location.hash = targetHash;
+    } catch (e) { /* ignore in restricted environments */ }
     if(pageId === 'dashboard') loadStats(token);
     if(pageId === 'users') loadUsers(token);
     if(pageId === 'absensi') loadAbsensi(token);
@@ -99,7 +104,7 @@
           <td><b>${u.nama}</b></td><td>${u.email}</td><td>${roleBadge}</td>
           <td style="display:flex; gap:5px;">
             <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:var(--primary);" data-nik="${u.nik}" data-nama="${u.nama}" data-email="${u.email}" data-role="${u.role}" onclick="openEditUserModal(this)" title="Edit"><i class="bi bi-pencil-fill"></i></button>
-            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:#f59e0b;" onclick="openResetModal('${u.nik}', '${u.nama}')" title="Reset Password"><i class="bi bi-key-fill"></i></button>
+            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:#f59e0b;" data-nik="${u.nik}" data-nama="${u.nama}" onclick="openResetModalFromBtn(this)" title="Reset Password"><i class="bi bi-key-fill"></i></button>
             <button class="btn btn-danger-outline" style="margin:0; padding:6px 10px; font-size:12px;" onclick="hapusUser('${u.nik}')" title="Hapus"><i class="bi bi-trash-fill"></i></button>
           </td></tr>`;
       });
@@ -126,15 +131,124 @@
   // === FUNGSI CRUD USER ===
   function openAddUserModal() { document.getElementById('modal-add-user').classList.add('show'); }
   function closeUserModal() { document.getElementById('modal-add-user').classList.remove('show'); }
-  function handleUserSubmit(e) { e.preventDefault(); closeUserModal(); showLoading("MENYIMPAN USER..."); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('new-nik').value, nama: document.getElementById('new-nama').value, email: document.getElementById('new-email').value, role: document.getElementById('new-role').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).saveUser(token, form); }
+  
+
+  function openTempPassModal(pass, name, nik) {
+    const modal = document.getElementById('modal-temp-pass');
+    if(!modal) return;
+    // Move modal to document.body to avoid parent clipping / stacking contexts
+    if (modal.parentNode !== document.body) document.body.appendChild(modal);
+
+    // Hide toast container so it doesn't cover modal
+    const toast = document.getElementById('toast-container');
+    if (toast) toast.style.display = 'none';
+
+    // Ensure body allows scrolling/visibility while modal active
+    document.body.style.overflow = 'auto';
+
+    // Force modal to highest z-index in case other overlays exist
+    modal.style.zIndex = '2147483647';
+    modal.style.pointerEvents = 'auto';
+
+    // Populate values with fallbacks if caller didn't provide them
+    const finalPass = pass || '-';
+    let finalName = name || '';
+    let finalNik = nik || '';
+
+    if (!finalName || finalName === '-') {
+      const elNewNama = document.getElementById('new-nama');
+      const elResetName = document.getElementById('reset-target-name');
+      if (elNewNama && elNewNama.value) finalName = elNewNama.value;
+      else if (elResetName && elResetName.innerText && elResetName.innerText !== 'User') finalName = elResetName.innerText;
+    }
+    if (!finalNik || finalNik === '-') {
+      const elNewNik = document.getElementById('new-nik');
+      const elResetNik = document.getElementById('reset-target-nik');
+      if (elNewNik && elNewNik.value) finalNik = elNewNik.value;
+      else if (elResetNik && elResetNik.value) finalNik = elResetNik.value;
+    }
+
+    document.getElementById('temp-pass-value').innerText = finalPass;
+    document.getElementById('temp-pass-name').innerText = finalName || '-';
+    document.getElementById('temp-pass-nik').innerText = finalNik || '-';
+    modal.classList.add('show');
+  }
+  function closeTempPassModal() {
+    const modal = document.getElementById('modal-temp-pass');
+    if(!modal) return;
+    modal.classList.remove('show');
+    // restore toast visibility
+    const toast = document.getElementById('toast-container');
+    if (toast) toast.style.display = '';
+    // restore any body overflow to default
+    document.body.style.overflow = '';
+    // cleanup inline styles we added
+    modal.style.zIndex = '';
+    modal.style.pointerEvents = '';
+  }
+  function copyTempPass() { const val = document.getElementById('temp-pass-value').innerText; navigator.clipboard.writeText(val).then(() => showToast('Password disalin ke clipboard','success')).catch(()=>showToast('Gagal menyalin','error')); }
+
+  function handleUserSubmit(e) {
+    e.preventDefault();
+    closeUserModal();
+    showLoading("MENYIMPAN USER...");
+    const token = STORAGE.getItem("sess_t");
+    const form = {
+      nik: document.getElementById('new-nik').value,
+      nama: document.getElementById('new-nama').value,
+      email: document.getElementById('new-email').value,
+      role: document.getElementById('new-role').value
+    };
+
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.status === 'success') {
+          navTo('users');
+          switchView('view-dashboard');
+          if (res.temp) openTempPassModal(res.temp, form.nama, form.nik);
+        } else {
+          showToast(res.message, res.status);
+          switchView('view-dashboard');
+        }
+      })
+      .withFailureHandler(err => {
+        console.error('SaveUser Error:', err);
+        showToast('Gagal menyimpan user. Cek log.', 'error');
+        switchView('view-dashboard');
+      })
+      .saveUser(token, form);
+  }
 
   function openEditUserModal(btn) { document.getElementById('edit-nik').value = btn.getAttribute('data-nik'); document.getElementById('edit-nama').value = btn.getAttribute('data-nama'); document.getElementById('edit-email').value = btn.getAttribute('data-email'); document.getElementById('edit-role').value = btn.getAttribute('data-role'); document.getElementById('modal-edit-user').classList.add('show'); }
   function closeEditUserModal() { document.getElementById('modal-edit-user').classList.remove('show'); }
+  function openResetModalFromBtn(btn) { const nik = btn.getAttribute('data-nik'); const nama = btn.getAttribute('data-nama'); openResetModal(nik, nama); }
   function handleEditUserSubmit(e) { e.preventDefault(); closeEditUserModal(); showLoading("MENGUPDATE DATA..."); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('edit-nik').value, nama: document.getElementById('edit-nama').value, email: document.getElementById('edit-email').value, role: document.getElementById('edit-role').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).editUser(token, form); }
 
   function openResetModal(nik, nama) { document.getElementById('reset-target-name').innerText = nama; document.getElementById('reset-target-nik').value = nik; document.getElementById('modal-reset').classList.add('show'); }
   function closeResetModal() { document.getElementById('modal-reset').classList.remove('show'); }
-  function confirmResetPassword() { const nik = document.getElementById('reset-target-nik').value; const token = STORAGE.getItem("sess_t"); closeResetModal(); showLoading("MERESET PASSWORD..."); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); switchView('view-dashboard'); }).resetUserPassword(token, nik); }
+  function confirmResetPassword() {
+    const nik = document.getElementById('reset-target-nik').value;
+    const token = STORAGE.getItem("sess_t");
+    closeResetModal();
+    showLoading("MERESET PASSWORD...");
+
+    google.script.run
+      .withSuccessHandler(res => {
+        if (res.status === 'success') {
+          switchView('view-dashboard');
+          if (res.temp) openTempPassModal(res.temp, document.getElementById('reset-target-name').innerText, nik);
+        } else {
+          showToast(res.message, res.status);
+          switchView('view-dashboard');
+        }
+      })
+      .withFailureHandler(err => {
+        console.error('ResetUser Error:', err);
+        showToast('Gagal mereset password. Cek log.', 'error');
+        switchView('view-dashboard');
+      })
+      .resetUserPassword(token, nik);
+  }
 
   function hapusUser(nik) { document.getElementById('delete-target-nik-value').value = nik; document.getElementById('delete-target-nik-display').innerText = nik; document.getElementById('modal-delete-user').classList.add('show'); }
   function closeDeleteModal() { document.getElementById('modal-delete-user').classList.remove('show'); }

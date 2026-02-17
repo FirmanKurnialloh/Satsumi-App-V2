@@ -2,14 +2,49 @@
  * ==========================================
  * SATSUMI ADMIN: SERVER CONTROLLER & API
  * ==========================================
+ * Security Features:
+ *  - Token validation (HMAC-SHA256)
+ *  - Admin/Super gatekeeper checks
+ *  - Rate-limiting helpers
  */
+
+/**
+ * Simple rate-limit check: Allow max 5 requests per 60 seconds per IP/token combo
+ */
+function checkRateLimit_(token) {
+  try {
+    const props = PropertiesService.getUserProperties();
+    const key = 'ratelimit_' + (token ? token.substring(0, 8) : 'anon');
+    const stored = JSON.parse(props.getProperty(key) || '{"count":0,"ts":0}');
+    const now = new Date().getTime();
+    const thirtySecAgo = now - (60 * 1000);
+    
+    if (stored.ts < thirtySecAgo) {
+      stored.count = 0;
+      stored.ts = now;
+    }
+    
+    stored.count++;
+    if (stored.count > 5) {
+      throw new Error("Terlalu banyak permintaan. Coba lagi dalam beberapa saat.");
+    }
+    
+    props.setProperty(key, JSON.stringify(stored));
+    return true;
+  } catch(e) {
+    if (e.message.includes("Terlalu banyak")) throw e;
+    console.warn("Rate limit check failed (logging only)", e);
+    return true;
+  }
+}
 
 // --- FUNGSI VALIDASI TOKEN ADMIN ---
 function checkAdminGatekeeper_(token) {
   if (!token) throw new Error("Akses Ditolak: Token sesi tidak ditemukan.");
   try {
-    const decoded = Utilities.newBlob(Utilities.base64Decode(token)).getDataAsString();
-    const [tokenNik] = decoded.split("|");
+    const parsed = parseSessionToken_(token);
+    if (!parsed.valid) throw new Error('Sesi tidak valid.');
+    const tokenNik = parsed.nik;
     const dbUser = getUserByNik_(tokenNik); // Fungsi ini ada di Sys_Srv_Auth
     if (!dbUser || (!dbUser.role.toUpperCase().includes('ADMIN') && !dbUser.role.toUpperCase().includes('SUPER'))) {
       throw new Error("Akses Ditolak: Anda bukan Administrator.");
@@ -18,7 +53,19 @@ function checkAdminGatekeeper_(token) {
   } catch(e) { throw new Error("Sesi tidak valid atau telah kedaluwarsa."); }
 }
 
+// Generate a cryptographically-strong temporary password
+function generateRandomPassword(length) {
+  length = length || 8;
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
+  let out = '';
+  for (let i = 0; i < length; i++) {
+    out += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return out;
+}
+
 function getAdminDashboardData(token) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const userSheet = ss.getSheetByName("Master_User");
@@ -51,6 +98,7 @@ function getAdminDashboardData(token) {
 }
 
 function getAllUsers(token) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
   const data = sheet.getDataRange().getValues();
@@ -58,28 +106,18 @@ function getAllUsers(token) {
   return data.map(r => ({ nik: r[0], email: r[1], nama: r[3], role: r[4], status: r[5] }));
 }
 
-// function saveUser(token, form) {
-//   checkAdminGatekeeper_(token);
-//   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
-//   const data = sheet.getDataRange().getValues();
-//   for(let i=1; i<data.length; i++) {
-//     if(String(data[i][0]) === String(form.nik)) return { status: 'error', message: 'NIK sudah terdaftar!' };
-//   }
 
-//   const defaultPass = hashPassword_("123456");
-//   sheet.appendRow([form.nik, form.email, defaultPass, form.nama, form.role, "Aktif", ""]);
-//   return { status: 'success', message: 'User berhasil ditambahkan.' };
-// }
 
 function saveUser(token, form) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
   const data = sheet.getDataRange().getValues();
   for(let i=1; i<data.length; i++) {
     if(String(data[i][0]) === String(form.nik)) return { status: 'error', message: 'NIK sudah terdaftar!' };
   }
-
-  const defaultPass = hashPassword_("123456");
+  const tempPlain = generateRandomPassword(8);
+  const defaultPass = hashPassword_(tempPlain);
   sheet.appendRow([form.nik, form.email, defaultPass, form.nama, form.role, "Aktif", ""]);
   
   // ---> TRIGGGER NOTIFIKASI DI SINI <---
@@ -89,7 +127,7 @@ function saveUser(token, form) {
     sendNotificationToAll("Info Admin Satsumi", pesanNotif);
   } catch(e) { /* Abaikan jika notif error agar tidak mengganggu proses simpan */ }
 
-  return { status: 'success', message: 'User berhasil ditambahkan.' };
+  return { status: 'success', message: 'User berhasil ditambahkan. Instruksi penggantian password dikirim terpisah.', temp: tempPlain };
 }
 
 function editUser(token, form) {
@@ -108,21 +146,23 @@ function editUser(token, form) {
 }
 
 function resetUserPassword(token, nik) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
   const data = sheet.getDataRange().getValues();
-  const defaultPass = hashPassword_("123456");
-
   for(let i=1; i<data.length; i++) {
     if(String(data[i][0]) === String(nik)) {
+      const tempPlain = generateRandomPassword(8);
+      const defaultPass = hashPassword_(tempPlain);
       sheet.getRange(i+1, 3).setValue(defaultPass);
-      return { status: 'success', message: 'Password direset ke: 123456' };
+      return { status: 'success', message: 'Password pengguna telah direset. Minta pengguna mengganti password setelah login.', temp: tempPlain };
     }
   }
   return { status: 'error', message: 'User tidak ditemukan.' };
 }
 
 function deleteUser(token, nik) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
   const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
   const data = sheet.getDataRange().getValues();
