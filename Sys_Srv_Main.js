@@ -8,6 +8,17 @@ function doGet(e) {
   const view = e.parameter.v;
   const scriptUrl = ScriptApp.getService().getUrl(); // Ambil URL Aktif (Penting!)
 
+  // 0. HALAMAN SCANNER (KIOSK MODE - PUBLIC, NO LOGIN REQUIRED)
+  // Serve scanner as standalone full-page document to avoid redirect loops
+    if (view === 'scanner' || view === 'kiosk') {
+      let scannerPage = HtmlService.createTemplateFromFile('Sys_View_Scanner');
+    scannerPage.scriptUrl = scriptUrl;
+    return scannerPage.evaluate()
+      .setTitle('Satsumi Scanner - Kiosk Mode')
+      .addMetaTag('viewport', 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no')
+      .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+  }
+
   // 1. HALAMAN VERIFIKASI (Publik - ?page=verify)
   if (page === 'verify') {
     let tmp = HtmlService.createTemplateFromFile('Verify');
@@ -28,7 +39,7 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
   }
 
-  // 3. HALAMAN UTAMA / SHELL (Untuk v=scanner, v=admin, v=user, dll)
+  // 3. HALAMAN UTAMA / SHELL (Untuk v=admin, v=guru, atau default)
   let shell = HtmlService.createTemplateFromFile('Sys_View_Index');
   shell.scriptUrl = scriptUrl; 
   shell.params = JSON.stringify(e.parameter || {}); // Kirim parameter v ke JS

@@ -89,34 +89,19 @@ function getSecretSalt_() {
 }
 
 /**
- * DEKRIPSI NIK (Server Side)
- * Digunakan untuk membaca NIK yang masuk dari Scanner
+ * ENKRIPSI NIK (Server Side)
+ * Hanya hash satu arah, tidak bisa didekripsi, hanya bisa divalidasi
  */
-function decryptNIK(ciphertext) {
-  try {
-    if (typeof CryptoJS !== 'undefined') {
-      const key = CryptoJS.SHA256(getSecretKey_());
-      const iv  = CryptoJS.SHA256(getSecretSalt_()).toString().substring(0, 32);
+function encryptNIK(nik) {
+  var salt = 'ParuhBurung';
+  var signature = Utilities.computeHmacSha256Signature(nik, salt);
+  return Utilities.base64Encode(signature);
+}
 
-      const decrypted = CryptoJS.AES.decrypt(
-        ciphertext,
-        key,
-        {
-          iv: CryptoJS.enc.Hex.parse(iv),
-          mode: CryptoJS.mode.CBC,
-          padding: CryptoJS.pad.Pkcs7
-        }
-      );
-
-      return decrypted.toString(CryptoJS.enc.Utf8);
-    }
-    // Fallback: try treating ciphertext as base64-encoded plaintext
-    try {
-      return Utilities.newBlob(Utilities.base64Decode(String(ciphertext))).getDataAsString();
-    } catch (e) {
-      return String(ciphertext);
-    }
-  } catch (e) {
-    return "";
-  }
+/**
+ * VALIDASI NIK (Server Side)
+ * Bandingkan hash hasil encryptNIK(nik) dengan hash yang diterima
+ */
+function validateNIK(nik, hash) {
+  return encryptNIK(nik) === hash;
 }

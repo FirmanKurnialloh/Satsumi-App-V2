@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Satsumi Scanner Kiosk</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      background: #0f172a; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+    }
+    header { 
+      background: #1e293b; padding: 20px; border-bottom: 1px solid #334155; text-align: center;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    header h1 { margin: 0; font-size: 24px; }
+    header p { color: #94a3b8; font-size: 12px; margin: 5px 0 0 0; }
+    .clock { text-align: right; }
+    .clock-time { font-size: 32px; font-weight: bold; font-family: monospace; }
+    .clock-date { font-size: 12px; color: #64748b; margin-top: 5px; }
+    
+    main { display: flex; flex: 1; overflow: hidden; }
+    .sidebar { 
+      width: 350px; background: #1e293b; border-right: 1px solid #334155; 
+      padding: 20px; display: flex; flex-direction: column; gap: 15px;
+      overflow-y: auto;
+    }
+    .camera-container { 
+      position: relative; width: 100%; aspect-ratio: 4/3; 
+      border-radius: 12px; overflow: hidden; border: 2px solid #475569; 
+      background: #0f172a;
+    }
+    video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+    canvas { display: none; }
+    
+    .input-box { 
+      background: #0f172a; border: 2px solid #475569; border-radius: 8px; padding: 10px;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .input-box input { 
+      flex: 1; background: transparent; border: none; color: #fff; font-size: 16px; outline: none;
+    }
+    .input-box input::placeholder { color: #64748b; }
+    
+    .stats { 
+      display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+    }
+    .stat-card { 
+      background: #0f172a; border: 1px solid #475569; border-radius: 8px; padding: 15px; 
+      text-align: center;
+    }
+    .stat-value { font-size: 28px; font-weight: bold; color: #3b82f6; }
+    .stat-label { font-size: 11px; color: #94a3b8; margin-top: 5px; text-transform: uppercase; }
+    
+    .result-box { 
+      background: #0f172a; border: 2px solid #475569; border-radius: 8px; padding: 15px; 
+      text-align: center; font-weight: bold; min-height: 60px; display: flex; align-items: center; justify-content: center;
+      color: #94a3b8;
+    }
+    .result-box.success { color: #10b981; border-color: #10b981; }
+    .result-box.error { color: #ef4444; border-color: #ef4444; }
+    
+    .gallery { 
+      flex: 1; background: #0f172a; padding: 20px; overflow-y: auto;
+    }
+    .gallery h2 { margin-bottom: 15px; font-size: 18px; }
+    .logs-container { display: flex; flex-direction: column; gap: 10px; }
+    .log-item { 
+      background: #1e293b; border-left: 3px solid #3b82f6; padding: 12px; border-radius: 4px;
+      font-size: 14px;
+    }
+    .log-name { font-weight: bold; color: #fff; }
+    .log-time { color: #94a3b8; font-size: 12px; margin-top: 3px; }
+    .log-status { font-size: 11px; color: #64748b; margin-top: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>SATSUMI SCANNER</h1>
+    <p>Sistem Presensi Terintegrasi</p>
+  </div>
+  <div class="clock">
+    <div class="clock-time" id="clock-time">--:--:--</div>
+    <div class="clock-date" id="clock-date">--</div>
+  </div>
+</header>
+
+<main>
+  <div class="sidebar">
+    <div class="camera-container">
+      <video id="video" autoplay playsinline></video>
+      <canvas id="canvas" width="320" height="240"></canvas>
+    </div>
+    
+    <div class="input-box">
+      <input type="text" id="nik-input" placeholder="Tap atau Scan NIK..." autocomplete="off">
+    </div>
+    
+    <div class="stats">
+      <div class="stat-card">
+        <div class="stat-value" id="stat-masuk">0</div>
+        <div class="stat-label">Masuk</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="stat-pulang">0</div>
+        <div class="stat-label">Pulang</div>
+      </div>
+    </div>
+    
+    <div class="result-box" id="result-box">Ready</div>
+  </div>
+  
+  <div class="gallery">
+    <h2>Presensi Hari Ini</h2>
+    <div class="logs-container" id="logs-container">
+      <div style="color: #64748b; text-align: center; padding: 20px;">Loading...</div>
+    </div>
+  </div>
+</main>
+
+<script>
+  // Initialize
+  let videoStream = null;
+  let lastLogCount = 0;
+
+  function init() {
+    updateClock();
+    setInterval(updateClock, 1000);
+    
+    // Request camera
+    navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: false })
+      .then(stream => {
+        videoStream = stream;
+        document.getElementById('video').srcObject = stream;
+      })
+      .catch(err => {
+        console.error('Camera error:', err);
+        showResult('Camera not available', 'error');
+      });
+
+    // Input handler
+    document.getElementById('nik-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        const nik = e.target.value.trim();
+        e.target.value = '';
+        if (nik.length > 2) processScan(nik);
+      }
+    });
+
+    // Refresh UI every 3 seconds
+    refreshLogs();
+    setInterval(refreshLogs, 3000);
+  }
+
+  function updateClock() {
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('id-ID', { hour12: false });
+    const dateStr = now.toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    document.getElementById('clock-time').innerText = timeStr;
+    document.getElementById('clock-date').innerText = dateStr;
+  }
+
+  function processScan(nik) {
+    showResult('Processing...', '');
+    
+    // Capture photo from camera
+    const canvas = document.getElementById('canvas');
+    const video = document.getElementById('video');
+    if (video && canvas) {
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(video, 0, 0, 320, 240);
+      const photoData = canvas.toDataURL('image/jpeg', 0.4);
+      
+      // Send to server
+      google.script.run
+        .withSuccessHandler(res => {
+          if (res.status === 'success') {
+            showResult('✓ ' + res.message, 'success');
+            setTimeout(() => refreshLogs(), 500);
+          } else {
+            showResult('✗ ' + res.message, 'error');
+          }
+        })
+        .withFailureHandler(err => {
+          console.error('Error:', err);
+          showResult('✗ Error: ' + (err.message || 'Network error'), 'error');
+        })
+        .simpanPresensi(nik, photoData);
+    }
+  }
+
+  function showResult(msg, type) {
+    const box = document.getElementById('result-box');
+    box.innerText = msg;
+    box.className = 'result-box ' + type;
+  }
+
+  function refreshLogs() {
+    google.script.run
+      .withSuccessHandler(data => {
+        const logs = data.logs || [];
+        const currentCount = logs.length;
+        
+        if (currentCount === lastLogCount) return;
+        lastLogCount = currentCount;
+
+        // Update stats
+        const stats = data.stats || { masuk: 0, pulang: 0 };
+        document.getElementById('stat-masuk').innerText = stats.masuk || 0;
+        document.getElementById('stat-pulang').innerText = stats.pulang || 0;
+
+        // Render logs
+        const container = document.getElementById('logs-container');
+        if (logs.length === 0) {
+          container.innerHTML = '<div style="color: #64748b; text-align: center; padding: 20px;">Belum ada presensi hari ini</div>';
+          return;
+        }
+
+        container.innerHTML = logs.map(log => `
+          <div class="log-item">
+            <div class="log-name">${log.nama || 'Unknown'}</div>
+            <div class="log-status">${log.mode || '-'}</div>
+            <div class="log-time">${log.waktu || '--:--'}</div>
+          </div>
+        `).join('');
+      })
+      .withFailureHandler(err => {
+        console.warn('Refresh error:', err);
+      })
+      .getScannerData();
+  }
+
+  // Start on load
+  window.addEventListener('load', init);
+</script>
+
+</body>
+</html>
