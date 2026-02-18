@@ -154,7 +154,7 @@ function getScannerData() {
 
 /**
  * SIMPAN PRESENSI DARI SCANNER KIOSK
- * DENGAN VALIDASI ANTI DUPLIKASI & ANTI SPAM
+ * DENGAN VALIDASI ANTI DUPLIKASI, ANTI SPAM & DETEKSI EARLY BIRD
  */
 function simpanPresensi(qrHash, photoData) {
   try {
@@ -193,7 +193,7 @@ function simpanPresensi(qrHash, photoData) {
     const now = new Date();
     const jamStr = Utilities.formatDate(now, "GMT+7", "HH:mm:ss");
     const tglStr = Utilities.formatDate(now, "GMT+7", "dd/MM/yyyy");
-    // const modeStatus = (now.getHours() < 12) ? "Masuk" : "Pulang";
+    
     const settings = getSessionSettings();
     const hasil = getModeAndKeterangan(now, settings);
     const modeStatus = hasil.mode;
@@ -216,8 +216,8 @@ function simpanPresensi(qrHash, photoData) {
       // ❌ MODE SAMA DI HARI YANG SAMA
       if (rowMode === modeStatus) {
         return {
-          status: "duplikat", // <--- INI KUNCINYA
-          nama: user.nama,    // <--- Kirim nama agar AI bisa menyapa
+          status: "duplikat",
+          nama: user.nama,
           mode: modeStatus,
           message: "Presensi " + modeStatus + " sudah tercatat hari ini."
         };
@@ -229,13 +229,31 @@ function simpanPresensi(qrHash, photoData) {
 
       if (diffDetik < BATAS_SPAM_DETIK) {
         return {
-          status: "duplikat", // <--- Anggap duplikat agar suara tidak "error"
+          status: "duplikat", 
           nama: user.nama,
           message: "Presensi terlalu cepat. Silakan tunggu beberapa menit."
         };
       }
 
-      break; // cukup cek data terakhir milik NIK tersebut
+      break; 
+    }
+
+    // ===============================
+    // DETEKSI EARLY BIRD (GAMIFIKASI)
+    // ===============================
+    let isEarlyBird = false;
+    if (modeStatus === "Masuk") {
+      let adaMasukHariIni = false;
+      // Cek apakah hari ini sudah ada yang absen "Masuk"
+      for (let i = presData.length - 1; i >= 1; i--) {
+        if (presData[i][0] === tglStr && presData[i][5] === "Masuk") {
+          adaMasukHariIni = true;
+          break; // Sudah ada yang absen, berarti bukan Early Bird
+        }
+      }
+      if (!adaMasukHariIni) {
+        isEarlyBird = true; // Yeay! Dia orang pertama!
+      }
     }
 
     // ===============================
@@ -276,12 +294,18 @@ function simpanPresensi(qrHash, photoData) {
       photoUrl
     ]);
     
+    // ===============================
+    // BALASAN KE KIOSK (DENGAN DATA GAMIFIKASI)
+    // ===============================
     return {
       status: "success",
       message: "Presensi " + user.nama + " (" + modeStatus + ") berhasil.",
       nama: user.nama,
       waktu: jamStr,
-      mode: modeStatus
+      mode: modeStatus,
+      keterangan: keterangan,   // Tambahan: agar Kiosk bisa membacakan keterangan Tepat Waktu/Terlambat
+      foto: photoUrl,           // Tambahan: agar Kiosk bisa menampilkan foto di popup penghargaan
+      is_early_bird: isEarlyBird// KUNCI UTAMA: Pemicu animasi Confetti!
     };
 
   } catch (e) {
