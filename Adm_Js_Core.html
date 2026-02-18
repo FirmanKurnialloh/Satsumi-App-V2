@@ -1,24 +1,44 @@
 <script>
+  /**
+   * GLOBAL CACHE
+   * Menyimpan data sementara agar bisa diakses oleh fungsi modal detail tanpa error parsing.
+   */
+  let REKAP_DATA_CACHE = [];
+
   // === INIT & NAVIGASI ADMIN ===
   function initDashboard(user) {
     const elName = document.getElementById('profile-name');
     const elRole = document.getElementById('profile-role');
     const elInit = document.getElementById('profile-initial');
 
-    // Cek apakah elemennya benar-benar ada di HTML
     if (!elName || !elRole || !elInit) {
-      console.error("🚨 ERROR UI: Elemen Topbar tidak ditemukan! Pastikan Adm_View_Topbar.html sudah di-include.");
-      alert("Peringatan: Topbar hilang. Silakan cek console (F12).");
+      console.error("🚨 ERROR UI: Elemen Topbar tidak ditemukan!");
     } else {
-      // Jika ada, baru isi datanya
       elName.innerText = user.nama;
       elRole.innerText = user.role;
       elInit.innerText = user.nama.charAt(0).toUpperCase();
     }
     
-    // Paksa pindah ke tampilan dashboard agar tidak stuck di loading
     switchView('view-dashboard');
-    navTo('dashboard'); 
+    
+    let currentHash = window.location.hash.substring(1);
+    if (!currentHash) currentHash = 'dashboard';
+    navTo(currentHash); 
+  }
+
+  window.addEventListener("hashchange", function() {
+    let currentHash = window.location.hash.substring(1);
+    if(currentHash) navTo(currentHash);
+  });
+
+  // === UI & SIDEBAR ===
+  function toggleSubmenu(submenuId, arrowId) {
+    const submenu = document.getElementById(submenuId);
+    const arrow = document.getElementById(arrowId);
+    if (submenu) {
+      submenu.classList.toggle('open');
+      if (arrow) arrow.classList.toggle('rotate');
+    }
   }
 
   function toggleSidebar() {
@@ -48,29 +68,30 @@
       setTimeout(() => target.classList.add('active-page'), 10);
     }
 
-    const titles = { 'dashboard': 'Dashboard Overview', 'users': 'Manajemen Pengguna', 'absensi': 'Laporan Absensi', 'settings': 'Pengaturan Sistem' };
+    const titles = { 
+      'dashboard': 'Dashboard Overview', 
+      'users': 'Manajemen Pengguna', 
+      'settings': 'Pengaturan Sistem',
+      'presensi-harian-rekap': 'Rekapitulasi Presensi Harian',
+      'presensi-harian-setting': 'Pengaturan Jam Kerja',
+      'presensi-harian-cetak': 'Cetak Laporan Bulanan',
+      'presensi-kegiatan-rekap': 'Rekapitulasi Presensi Kegiatan'
+    };
     document.getElementById('page-title').innerText = titles[pageId] || 'Dashboard';
 
     const token = STORAGE.getItem("sess_t");
-    // update browser URL hash so page can be linked/bookmarked
+    
     try {
       const targetHash = '#' + pageId;
       if (location.hash !== targetHash) location.hash = targetHash;
-    } catch (e) { /* ignore in restricted environments */ }
+    } catch (e) { }
+    
     if(pageId === 'dashboard') loadStats(token);
     if(pageId === 'users') loadUsers(token);
-    if(pageId === 'absensi') loadAbsensi(token);
     if(pageId === 'settings') loadSettings(token);
+    if(pageId === 'presensi-harian-rekap') loadRekapHarian();
 
     if (window.innerWidth <= 768 && document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
-  }
-
-  function renderRow(tbody, u) {
-    let badgeClass = 'badge-siswa';
-    if(u.role === 'Admin' || u.role === 'Super Admin') badgeClass = 'badge-admin';
-    if(u.role === 'Guru') badgeClass = 'badge-guru';
-    if(u.role === 'Tendik') badgeClass = 'badge-tendik';
-    tbody.innerHTML += `<tr><td style="font-family:monospace;">${u.nik}</td><td><strong>${u.nama}</strong></td><td><span class="badge ${badgeClass}">${u.role}</span></td><td><span style="color:var(--success);font-size:12px;">● ${u.status}</span></td></tr>`;
   }
 
   // === DATA LOADERS ===
@@ -86,112 +107,174 @@
     }).getAdminDashboardData(token);
   }
 
+  function renderRow(tbody, u) {
+    let badgeClass = 'badge-siswa';
+    if(u.role === 'Admin' || u.role === 'Super Admin') badgeClass = 'badge-admin';
+    if(u.role === 'Guru') badgeClass = 'badge-guru';
+    if(u.role === 'Tendik') badgeClass = 'badge-tendik';
+    tbody.innerHTML += '<tr><td style="font-family:monospace;">'+u.nik+'</td><td><strong>'+u.nama+'</strong></td><td><span class="badge '+badgeClass+'">'+u.role+'</span></td><td><span style="color:var(--success);font-size:12px;">● '+u.status+'</span></td></tr>';
+  }
+
   function loadUsers(token) {
     const tbody = document.getElementById('table-users');
-    if ($.fn.DataTable.isDataTable('#userTable')) $('#userTable').DataTable().destroy();
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Mengambil data pengguna...</td></tr>';
-    
+    if ($.fn.DataTable.isDataTable('#userTable')) {
+      $('#userTable').DataTable().clear().destroy();
+      $('#userTable tbody').empty();
+    }
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Mengambil data...</td></tr>';
     google.script.run.withSuccessHandler(users => {
       tbody.innerHTML = "";
+      if (!users || users.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Tidak ada data.</td></tr>';
+        return;
+      }
       users.forEach(u => {
-        let roleBadge = `<span class="badge badge-siswa">${u.role}</span>`;
-        if(u.role === 'Admin' || u.role === 'Super Admin') roleBadge = `<span class="badge badge-admin">${u.role}</span>`;
-        if(u.role === 'Guru') roleBadge = `<span class="badge badge-guru">${u.role}</span>`;
-        if(u.role === 'Tendik') roleBadge = `<span class="badge badge-tendik">${u.role}</span>`;
-
-        tbody.innerHTML += `<tr>
-          <td style="font-family:monospace; font-weight:600;">${u.nik}</td>
-          <td><b>${u.nama}</b></td><td>${u.email}</td><td>${roleBadge}</td>
-          <td style="display:flex; gap:5px;">
-            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:var(--primary);" data-nik="${u.nik}" data-nama="${u.nama}" data-email="${u.email}" data-role="${u.role}" onclick="openEditUserModal(this)" title="Edit"><i class="bi bi-pencil-fill"></i></button>
-            <button class="btn" style="margin:0; padding:6px 10px; font-size:12px; background:#f59e0b;" data-nik="${u.nik}" data-nama="${u.nama}" onclick="openResetModalFromBtn(this)" title="Reset Password"><i class="bi bi-key-fill"></i></button>
-            <button class="btn btn-danger-outline" style="margin:0; padding:6px 10px; font-size:12px;" onclick="hapusUser('${u.nik}')" title="Hapus"><i class="bi bi-trash-fill"></i></button>
-          </td></tr>`;
+        let roleBadge = '<span class="badge badge-siswa">'+u.role+'</span>';
+        if(u.role.includes('Admin')) roleBadge = '<span class="badge badge-admin">'+u.role+'</span>';
+        if(u.role === 'Guru') roleBadge = '<span class="badge badge-guru">'+u.role+'</span>';
+        if(u.role === 'Tendik') roleBadge = '<span class="badge badge-tendik">'+u.role+'</span>';
+        
+        tbody.innerHTML += '<tr>' +
+          '<td style="font-family:monospace; font-weight:600;">'+u.nik+'</td>' +
+          '<td><b>'+u.nama+'</b></td><td>'+u.email+'</td><td>'+roleBadge+'</td>' +
+          '<td style="display:flex; gap:5px;">' +
+            '<button class="btn" style="background:var(--primary);padding:6px 10px;" data-nik="'+u.nik+'" data-nama="'+u.nama+'" data-email="'+u.email+'" data-role="'+u.role+'" onclick="openEditUserModal(this)"><i class="bi bi-pencil-fill"></i></button>' +
+            '<button class="btn" style="background:#f59e0b;padding:6px 10px;" data-nik="'+u.nik+'" data-nama="'+u.nama+'" onclick="openResetModalFromBtn(this)"><i class="bi bi-key-fill"></i></button>' +
+            '<button class="btn btn-danger-outline" style="padding:6px 10px;" onclick="hapusUser(\''+u.nik+'\')"><i class="bi bi-trash-fill"></i></button>' +
+          '</td></tr>';
       });
-      $('#userTable').DataTable({ "pageLength": 10, "order": [[1, "asc"]], "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json", "search": "", "searchPlaceholder": "Cari Nama, NIK, atau Email..." }, "dom": '<"top-actions"f>rt<"bottom-nav"ip>', "columnDefs": [ { "targets": 4, "orderable": false } ] });
+      $('#userTable').DataTable({ "retrieve": true, "pageLength": 10, "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json" } });
     }).getAllUsers(token);
   }
 
-  function loadAbsensi(token) {
-    const tbody = document.getElementById('table-absensi'); tbody.innerHTML = "";
+  /**
+   * LOAD REKAP HARIAN (Index-Based Click)
+   */
+  function loadRekapHarian() {
+    const token = STORAGE.getItem("sess_t");
+    const tbody = document.getElementById('table-rekap-harian');
+    const inputTgl = document.getElementById('filter-tanggal-presensi');
+    
+    if (inputTgl && !inputTgl.value) {
+      inputTgl.value = new Date().toISOString().split('T')[0];
+    }
+    const targetDate = inputTgl ? inputTgl.value : "";
+
+    if ($.fn.DataTable.isDataTable('#rekapHarianTable')) {
+      $('#rekapHarianTable').DataTable().clear().destroy();
+      $('#rekapHarianTable tbody').empty();
+    }
+    
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;"><div class="spinner-border text-primary"></div></td></tr>';
+
     google.script.run.withSuccessHandler(data => {
-      data.forEach(row => { tbody.innerHTML += `<tr><td>${row.nama}</td><td>${row.waktu}</td><td><span class="badge badge-guru">${row.status}</span></td></tr>`; });
-    }).getAbsensiSimulasi(token);
+      tbody.innerHTML = "";
+      REKAP_DATA_CACHE = data; // Simpan data ke memori global
+
+      if (!data || data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color: #94a3b8;">Tidak ada data presensi pada tanggal '+targetDate+'</td></tr>';
+        return;
+      }
+
+      data.forEach((row, index) => {
+        const isLate = row.keterangan.toLowerCase().includes('terlambat');
+        const statusBadgeClass = row.status === 'Masuk' ? 'badge-guru' : 'badge-admin';
+        const avatar = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.nama) + '&background=random';
+        
+        tbody.innerHTML += '<tr style="cursor:pointer" onclick="showDetailPresensi(' + index + ')">' +
+          '<td><strong style="color:var(--primary);">' + row.jam + '</strong></td>' +
+          '<td>' +
+            '<div style="display:flex;align-items:center;gap:12px;">' +
+              '<img src="' + (row.foto || avatar) + '" style="width:40px;height:40px;border-radius:10px;object-fit:cover;border:1px solid var(--border);">' +
+              '<div>' +
+                '<div style="font-weight:700;color:var(--text);">' + row.nama + '</div>' +
+                '<div style="font-size:0.75rem;color:var(--sub);">NIK: ' + row.nik + '</div>' +
+              '</div>' +
+            '</div>' +
+          '</td>' +
+          '<td><span class="badge ' + statusBadgeClass + '">' + row.status + '</span></td>' +
+          '<td>' +
+            '<div style="font-size:0.85rem;color:' + (isLate ? 'var(--danger)' : 'var(--sub)') + ';font-weight:' + (isLate ? '600' : '400') + '">' + row.keterangan + '</div>' +
+            '<div style="font-size:0.7rem;text-transform:uppercase;opacity:0.6;">' + row.jabatan + '</div>' +
+          '</td>' +
+        '</tr>';
+      });
+
+      $('#rekapHarianTable').DataTable({ 
+        "retrieve": true, 
+        "pageLength": 10, 
+        "order": [[0, "desc"]],
+        "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json", "search": "" }, 
+        "dom": '<"top-actions"f>rt<"bottom-nav"ip>' 
+      });
+    }).getRekapHarian(token, targetDate);
   }
 
+  /**
+   * SHOW DETAIL MODAL (Global Scope)
+   */
+  window.showDetailPresensi = function(index) {
+    const data = REKAP_DATA_CACHE[index];
+    if (!data) return;
+
+    // Pastikan elemen modal ada sebelum diisi
+    const elNama = document.getElementById('detail-nama');
+    if (!elNama) return;
+
+    elNama.innerText = data.nama;
+    document.getElementById('detail-jabatan').innerText = data.jabatan || '-';
+    document.getElementById('detail-nik').innerText = data.nik || '-';
+    document.getElementById('detail-waktu').innerText = data.jam || '--:--';
+    document.getElementById('detail-keterangan').innerText = data.keterangan || '-';
+    document.getElementById('detail-foto').src = data.foto || ('https://ui-avatars.com/api/?name=' + encodeURIComponent(data.nama));
+    
+    const badge = document.getElementById('detail-badge-status');
+    if (badge) {
+      badge.innerText = data.status;
+      badge.className = 'badge ' + (data.status === 'Masuk' ? 'badge-guru' : 'badge-admin');
+    }
+    
+    document.getElementById('modal-detail-presensi').classList.add('show');
+  };
+
   function loadSettings(token) {
-    document.getElementById('set-app-name').value = "..."; document.getElementById('set-app-desc').value = "...";
-    document.getElementById('server-time').innerText = new Date().toLocaleString();
     google.script.run.withSuccessHandler(data => {
-      document.getElementById('set-app-name').value = data.appName; document.getElementById('set-app-desc').value = data.appDesc;
-      document.getElementById('set-maintenance').checked = data.maintenance; document.querySelector('.sidebar-title').innerText = data.appName;
+      document.getElementById('set-app-name').value = data.appName; 
+      document.getElementById('set-app-desc').value = data.appDesc;
+      document.getElementById('set-maintenance').checked = data.maintenance; 
+      document.querySelector('.sidebar-title').innerText = data.appName;
+      document.getElementById('server-time').innerText = new Date().toLocaleString();
     }).getSystemSettings(token);
+  }
+
+  // === FUNGSI PENGATURAN HARIAN ===
+  function simpanJadwalHarian() {
+    const token = STORAGE.getItem("sess_t");
+    const form = {
+      jamMasuk: document.getElementById('set-harian-masuk').value,
+      jamToleransi: document.getElementById('set-harian-toleransi').value,
+      jamPulang: document.getElementById('set-harian-pulang').value
+    };
+
+    if(!form.jamMasuk || !form.jamToleransi || !form.jamPulang) {
+      return showToast("Harap lengkapi semua pengaturan waktu!", "error");
+    }
+
+    showLoading("MENYIMPAN KONFIGURASI...");
+    google.script.run.withSuccessHandler(res => {
+      showToast(res.message, res.status);
+      if(res.status === 'success') setTimeout(() => navTo('presensi-harian-rekap'), 1500);
+    }).saveHarianSettings(token, form);
   }
 
   // === FUNGSI CRUD USER ===
   function openAddUserModal() { document.getElementById('modal-add-user').classList.add('show'); }
   function closeUserModal() { document.getElementById('modal-add-user').classList.remove('show'); }
   
-
-  function openTempPassModal(pass, name, nik) {
-    const modal = document.getElementById('modal-temp-pass');
-    if(!modal) return;
-    // Move modal to document.body to avoid parent clipping / stacking contexts
-    if (modal.parentNode !== document.body) document.body.appendChild(modal);
-
-    // Hide toast container so it doesn't cover modal
-    const toast = document.getElementById('toast-container');
-    if (toast) toast.style.display = 'none';
-
-    // Ensure body allows scrolling/visibility while modal active
-    document.body.style.overflow = 'auto';
-
-    // Force modal to highest z-index in case other overlays exist
-    modal.style.zIndex = '2147483647';
-    modal.style.pointerEvents = 'auto';
-
-    // Populate values with fallbacks if caller didn't provide them
-    const finalPass = pass || '-';
-    let finalName = name || '';
-    let finalNik = nik || '';
-
-    if (!finalName || finalName === '-') {
-      const elNewNama = document.getElementById('new-nama');
-      const elResetName = document.getElementById('reset-target-name');
-      if (elNewNama && elNewNama.value) finalName = elNewNama.value;
-      else if (elResetName && elResetName.innerText && elResetName.innerText !== 'User') finalName = elResetName.innerText;
-    }
-    if (!finalNik || finalNik === '-') {
-      const elNewNik = document.getElementById('new-nik');
-      const elResetNik = document.getElementById('reset-target-nik');
-      if (elNewNik && elNewNik.value) finalNik = elNewNik.value;
-      else if (elResetNik && elResetNik.value) finalNik = elResetNik.value;
-    }
-
-    document.getElementById('temp-pass-value').innerText = finalPass;
-    document.getElementById('temp-pass-name').innerText = finalName || '-';
-    document.getElementById('temp-pass-nik').innerText = finalNik || '-';
-    modal.classList.add('show');
-  }
-  function closeTempPassModal() {
-    const modal = document.getElementById('modal-temp-pass');
-    if(!modal) return;
-    modal.classList.remove('show');
-    // restore toast visibility
-    const toast = document.getElementById('toast-container');
-    if (toast) toast.style.display = '';
-    // restore any body overflow to default
-    document.body.style.overflow = '';
-    // cleanup inline styles we added
-    modal.style.zIndex = '';
-    modal.style.pointerEvents = '';
-  }
-  function copyTempPass() { const val = document.getElementById('temp-pass-value').innerText; navigator.clipboard.writeText(val).then(() => showToast('Password disalin ke clipboard','success')).catch(()=>showToast('Gagal menyalin','error')); }
-
   function handleUserSubmit(e) {
     e.preventDefault();
     closeUserModal();
-    showLoading("MENYIMPAN USER...");
+    showLoading("MENYIMPAN...");
     const token = STORAGE.getItem("sess_t");
     const form = {
       nik: document.getElementById('new-nik').value,
@@ -199,66 +282,101 @@
       email: document.getElementById('new-email').value,
       role: document.getElementById('new-role').value
     };
-
-    google.script.run
-      .withSuccessHandler(res => {
-        if (res.status === 'success') {
-          navTo('users');
-          switchView('view-dashboard');
-          if (res.temp) openTempPassModal(res.temp, form.nama, form.nik);
-        } else {
-          showToast(res.message, res.status);
-          switchView('view-dashboard');
-        }
-      })
-      .withFailureHandler(err => {
-        console.error('SaveUser Error:', err);
-        showToast('Gagal menyimpan user. Cek log.', 'error');
-        switchView('view-dashboard');
-      })
-      .saveUser(token, form);
+    google.script.run.withSuccessHandler(res => {
+      if (res.status === 'success') {
+        loadUsers(token);
+        if (res.temp) openTempPassModal(res.temp, form.nama, form.nik);
+      } else {
+        showToast(res.message, res.status);
+      }
+      switchView('view-dashboard');
+    }).saveUser(token, form);
   }
 
-  function openEditUserModal(btn) { document.getElementById('edit-nik').value = btn.getAttribute('data-nik'); document.getElementById('edit-nama').value = btn.getAttribute('data-nama'); document.getElementById('edit-email').value = btn.getAttribute('data-email'); document.getElementById('edit-role').value = btn.getAttribute('data-role'); document.getElementById('modal-edit-user').classList.add('show'); }
+  function openEditUserModal(btn) { 
+    document.getElementById('edit-nik').value = btn.getAttribute('data-nik');
+    document.getElementById('edit-nama').value = btn.getAttribute('data-nama');
+    document.getElementById('edit-email').value = btn.getAttribute('data-email');
+    document.getElementById('edit-role').value = btn.getAttribute('data-role');
+    document.getElementById('modal-edit-user').classList.add('show'); 
+  }
+  
   function closeEditUserModal() { document.getElementById('modal-edit-user').classList.remove('show'); }
-  function openResetModalFromBtn(btn) { const nik = btn.getAttribute('data-nik'); const nama = btn.getAttribute('data-nama'); openResetModal(nik, nama); }
-  function handleEditUserSubmit(e) { e.preventDefault(); closeEditUserModal(); showLoading("MENGUPDATE DATA..."); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('edit-nik').value, nama: document.getElementById('edit-nama').value, email: document.getElementById('edit-email').value, role: document.getElementById('edit-role').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).editUser(token, form); }
 
-  function openResetModal(nik, nama) { document.getElementById('reset-target-name').innerText = nama; document.getElementById('reset-target-nik').value = nik; document.getElementById('modal-reset').classList.add('show'); }
-  function closeResetModal() { document.getElementById('modal-reset').classList.remove('show'); }
+  function openResetModalFromBtn(btn) {
+    const nik = btn.getAttribute('data-nik');
+    const nama = btn.getAttribute('data-nama');
+    document.getElementById('reset-target-name').innerText = nama;
+    document.getElementById('reset-target-nik').value = nik;
+    document.getElementById('modal-reset').classList.add('show');
+  }
+
   function confirmResetPassword() {
     const nik = document.getElementById('reset-target-nik').value;
     const token = STORAGE.getItem("sess_t");
-    closeResetModal();
-    showLoading("MERESET PASSWORD...");
-
-    google.script.run
-      .withSuccessHandler(res => {
-        if (res.status === 'success') {
-          switchView('view-dashboard');
-          if (res.temp) openTempPassModal(res.temp, document.getElementById('reset-target-name').innerText, nik);
-        } else {
-          showToast(res.message, res.status);
-          switchView('view-dashboard');
-        }
-      })
-      .withFailureHandler(err => {
-        console.error('ResetUser Error:', err);
-        showToast('Gagal mereset password. Cek log.', 'error');
-        switchView('view-dashboard');
-      })
-      .resetUserPassword(token, nik);
+    document.getElementById('modal-reset').classList.remove('show');
+    showLoading("MERESET...");
+    google.script.run.withSuccessHandler(res => {
+      if (res.status === 'success') openTempPassModal(res.temp, document.getElementById('reset-target-name').innerText, nik);
+      else showToast(res.message, 'error');
+      switchView('view-dashboard');
+    }).resetUserPassword(token, nik);
   }
 
-  function hapusUser(nik) { document.getElementById('delete-target-nik-value').value = nik; document.getElementById('delete-target-nik-display').innerText = nik; document.getElementById('modal-delete-user').classList.add('show'); }
-  function closeDeleteModal() { document.getElementById('modal-delete-user').classList.remove('show'); }
-  function confirmDeleteUser() { const nik = document.getElementById('delete-target-nik-value').value; const token = STORAGE.getItem("sess_t"); closeDeleteModal(); showLoading("MENGHAPUS USER..."); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); if(res.status === 'success') navTo('users'); switchView('view-dashboard'); }).deleteUser(token, nik); }
+  function hapusUser(nik) {
+    document.getElementById('delete-target-nik-value').value = nik;
+    document.getElementById('delete-target-nik-display').innerText = nik;
+    document.getElementById('modal-delete-user').classList.add('show');
+  }
 
-  // === FUNGSI PENGATURAN & PROFIL ===
-  function handleSaveSettings(e) { e.preventDefault(); const token = STORAGE.getItem("sess_t"); showLoading("MENYIMPAN PENGATURAN..."); const form = { appName: document.getElementById('set-app-name').value, appDesc: document.getElementById('set-app-desc').value }; google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); switchView('view-dashboard'); document.querySelector('.sidebar-title').innerText = form.appName; }).saveSystemSettings(token, form); }
-  function handleMaintenanceToggle(el) { const token = STORAGE.getItem("sess_t"); const isActive = el.checked; el.disabled = true; showToast(isActive ? "Mengaktifkan Mode Perbaikan..." : "Mematikan Mode Perbaikan...", "info"); google.script.run.withSuccessHandler(res => { showToast(res.message, res.status); el.disabled = false; }).toggleMaintenanceMode(token, isActive); }
+  function confirmDeleteUser() {
+    const nik = document.getElementById('delete-target-nik-value').value;
+    const token = STORAGE.getItem("sess_t");
+    document.getElementById('modal-delete-user').classList.remove('show');
+    showLoading("MENGHAPUS...");
+    google.script.run.withSuccessHandler(res => {
+      showToast(res.message, res.status);
+      loadUsers(token);
+      switchView('view-dashboard');
+    }).deleteUser(token, nik);
+  }
 
-  function openProfileModal() { const encUser = STORAGE.getItem("sess_u_aes"); if (!encUser) return; const user = decryptAES(encUser); if (!user) return; document.getElementById('modal-profile-avatar').innerText = user.nama.charAt(0).toUpperCase(); document.getElementById('modal-profile-name').innerText = user.nama; document.getElementById('modal-profile-role').innerText = user.role; document.getElementById('modal-profile-nik').innerText = user.nik; document.getElementById('modal-profile-email').innerText = user.email; document.getElementById('old-pass').value = ""; document.getElementById('new-pass').value = ""; document.getElementById('confirm-pass').value = ""; document.getElementById('modal-profile').classList.add('show'); }
-  function closeProfileModal() { document.getElementById('modal-profile').classList.remove('show'); }
-  function handlePasswordChange(e) { e.preventDefault(); const token = STORAGE.getItem("sess_t"); const form = { nik: document.getElementById('modal-profile-nik').innerText, oldPass: document.getElementById('old-pass').value, newPass: document.getElementById('new-pass').value }; if (form.newPass.length < 6) return showToast("Password minimal 6 karakter!", "error"); if (form.newPass !== document.getElementById('confirm-pass').value) return showToast("Konfirmasi password tidak cocok!", "error"); closeProfileModal(); showLoading("MENGUPDATE PASSWORD..."); google.script.run.withSuccessHandler(res => { if (res.status === 'success') { showToast("Password berhasil diganti! Login ulang...", "success"); setTimeout(() => logout(), 2000); } else { showToast(res.message, "error"); setTimeout(() => openProfileModal(), 500); } switchView('view-dashboard'); }).changeUserPassword(token, form); }
+  function openTempPassModal(pass, name, nik) {
+    document.getElementById('temp-pass-value').innerText = pass;
+    document.getElementById('temp-pass-name').innerText = name;
+    document.getElementById('temp-pass-nik').innerText = nik;
+    document.getElementById('modal-temp-pass').classList.add('show');
+  }
+
+  function closeTempPassModal() {
+    document.getElementById('modal-temp-pass').classList.remove('show');
+  }
+
+  function copyTempPass() { 
+    const val = document.getElementById('temp-pass-value').innerText; 
+    navigator.clipboard.writeText(val).then(() => showToast('Password disalin','success')); 
+  }
+
+  function handleSaveSettings(e) { 
+    e.preventDefault(); 
+    const token = STORAGE.getItem("sess_t"); 
+    showLoading("MENYIMPAN..."); 
+    const form = { appName: document.getElementById('set-app-name').value, appDesc: document.getElementById('set-app-desc').value }; 
+    google.script.run.withSuccessHandler(res => { 
+      showToast(res.message, res.status); 
+      switchView('view-dashboard'); 
+      document.querySelector('.sidebar-title').innerText = form.appName; 
+    }).saveSystemSettings(token, form); 
+  }
+
+  function handleMaintenanceToggle(el) { 
+    const token = STORAGE.getItem("sess_t"); 
+    google.script.run.withSuccessHandler(res => showToast(res.message, res.status)).toggleMaintenanceMode(token, el.checked); 
+  }
+
+  function logout() {
+    STORAGE.removeItem("sess_t");
+    STORAGE.removeItem("sess_u");
+    window.location.href = google.script.host.origin + google.script.history.location.pathname;
+  }
 </script>

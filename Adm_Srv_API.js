@@ -3,13 +3,13 @@
  * SATSUMI ADMIN: SERVER CONTROLLER & API
  * ==========================================
  * Security Features:
- *  - Token validation (HMAC-SHA256)
- *  - Admin/Super gatekeeper checks
- *  - Rate-limiting helpers
+ * - Token validation (HMAC-SHA256)
+ * - Admin/Super gatekeeper checks
+ * - Rate-limiting (Adjusted for Navigation)
  */
 
 /**
- * Simple rate-limit check: Allow max 5 requests per 60 seconds per IP/token combo
+ * Pelonggaran Rate-limit: Mengizinkan hingga 15 permintaan per 60 detik
  */
 function checkRateLimit_(token) {
   try {
@@ -17,35 +17,33 @@ function checkRateLimit_(token) {
     const key = 'ratelimit_' + (token ? token.substring(0, 8) : 'anon');
     const stored = JSON.parse(props.getProperty(key) || '{"count":0,"ts":0}');
     const now = new Date().getTime();
-    const thirtySecAgo = now - (60 * 1000);
     
-    if (stored.ts < thirtySecAgo) {
+    if (stored.ts < now - 60000) {
       stored.count = 0;
       stored.ts = now;
     }
     
     stored.count++;
-    if (stored.count > 5) {
-      throw new Error("Terlalu banyak permintaan. Coba lagi dalam beberapa saat.");
+    if (stored.count > 15) {
+      throw new Error("Terlalu banyak permintaan. Coba lagi dalam 1 menit.");
     }
     
     props.setProperty(key, JSON.stringify(stored));
     return true;
   } catch(e) {
     if (e.message.includes("Terlalu banyak")) throw e;
-    console.warn("Rate limit check failed (logging only)", e);
+    console.warn("Rate limit check failed (bypassed)", e);
     return true;
   }
 }
 
-// --- FUNGSI VALIDASI TOKEN ADMIN ---
 function checkAdminGatekeeper_(token) {
   if (!token) throw new Error("Akses Ditolak: Token sesi tidak ditemukan.");
   try {
     const parsed = parseSessionToken_(token);
     if (!parsed.valid) throw new Error('Sesi tidak valid.');
     const tokenNik = parsed.nik;
-    const dbUser = getUserByNik_(tokenNik); // Fungsi ini ada di Sys_Srv_Auth
+    const dbUser = getUserByNik_(tokenNik);
     if (!dbUser || (!dbUser.role.toUpperCase().includes('ADMIN') && !dbUser.role.toUpperCase().includes('SUPER'))) {
       throw new Error("Akses Ditolak: Anda bukan Administrator.");
     }
@@ -53,7 +51,6 @@ function checkAdminGatekeeper_(token) {
   } catch(e) { throw new Error("Sesi tidak valid atau telah kedaluwarsa."); }
 }
 
-// Generate a cryptographically-strong temporary password
 function generateRandomPassword(length) {
   length = length || 8;
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%&*';
@@ -74,12 +71,13 @@ function getAdminDashboardData(token) {
 
   let totalHadirHariIni = 0;
   try {
-    const absensiSheet = ss.getSheetByName("Log_Presensi");
+    const absensiSheet = ss.getSheetByName("PRESENSI") || ss.getSheetByName("Log_Presensi");
     if (absensiSheet) {
-      const today = Utilities.formatDate(new Date(), "GMT+7", "yyyy-MM-dd");
+      const today = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy");
       const absensiData = absensiSheet.getDataRange().getValues();
       totalHadirHariIni = absensiData.filter(r => {
-        const tglRow = Utilities.formatDate(new Date(r[1]), "GMT+7", "yyyy-MM-dd"); 
+        if (!r[0]) return false;
+        const tglRow = (r[0] instanceof Date) ? Utilities.formatDate(r[0], "GMT+7", "dd/MM/yyyy") : String(r[0]);
         return tglRow === today;
       }).length;
     }
@@ -106,8 +104,6 @@ function getAllUsers(token) {
   return data.map(r => ({ nik: r[0], email: r[1], nama: r[3], role: r[4], status: r[5] }));
 }
 
-
-
 function saveUser(token, form) {
   checkRateLimit_(token);
   checkAdminGatekeeper_(token);
@@ -119,15 +115,7 @@ function saveUser(token, form) {
   const tempPlain = generateRandomPassword(8);
   const defaultPass = hashPassword_(tempPlain);
   sheet.appendRow([form.nik, form.email, defaultPass, form.nama, form.role, "Aktif", ""]);
-  
-  // ---> TRIGGGER NOTIFIKASI DI SINI <---
-  // Hanya contoh, pastikan Anda sudah mengatur App ID OneSignal di Sys_Srv_Notif.gs
-  try {
-    const pesanNotif = "Pengguna baru telah ditambahkan: " + form.nama + " sebagai " + form.role;
-    sendNotificationToAll("Info Admin Satsumi", pesanNotif);
-  } catch(e) { /* Abaikan jika notif error agar tidak mengganggu proses simpan */ }
-
-  return { status: 'success', message: 'User berhasil ditambahkan. Instruksi penggantian password dikirim terpisah.', temp: tempPlain };
+  return { status: 'success', message: 'User berhasil ditambahkan.', temp: tempPlain };
 }
 
 function editUser(token, form) {
@@ -155,7 +143,7 @@ function resetUserPassword(token, nik) {
       const tempPlain = generateRandomPassword(8);
       const defaultPass = hashPassword_(tempPlain);
       sheet.getRange(i+1, 3).setValue(defaultPass);
-      return { status: 'success', message: 'Password pengguna telah direset. Minta pengguna mengganti password setelah login.', temp: tempPlain };
+      return { status: 'success', message: 'Password berhasil direset.', temp: tempPlain };
     }
   }
   return { status: 'error', message: 'User tidak ditemukan.' };
@@ -176,33 +164,54 @@ function deleteUser(token, nik) {
   return { status: 'error', message: 'Gagal: NIK tidak ditemukan.' };
 }
 
-function getAbsensiSimulasi(token) {
+/**
+ * MENGAMBIL DATA REKAP PRESENSI HARIAN DENGAN FILTER TANGGAL
+ */
+function getRekapHarian(token, filterDate) {
+  checkRateLimit_(token);
   checkAdminGatekeeper_(token);
-  return [
-    { nama: "Budi Santoso", waktu: "06:45", status: "HADIR" },
-    { nama: "Siti Aminah", waktu: "06:50", status: "HADIR" },
-    { nama: "Rudi Hartono", waktu: "-", status: "ALPHA" },
-  ];
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("PRESENSI");
+  if (!sheet) return [];
+
+  let targetDate;
+  if (filterDate) {
+    const parts = filterDate.split('-');
+    targetDate = parts[2] + "/" + parts[1] + "/" + parts[0];
+  } else {
+    targetDate = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy");
+  }
+
+  const data = sheet.getDataRange().getValues();
+  return data.slice(1).filter(row => {
+    if (!row[0]) return false;
+    const tgl = (row[0] instanceof Date) ? Utilities.formatDate(row[0], "GMT+7", "dd/MM/yyyy") : String(row[0]);
+    return tgl === targetDate;
+  }).map(row => ({
+    jam: row[1] instanceof Date ? Utilities.formatDate(row[1], "GMT+7", "HH:mm:ss") : String(row[1]),
+    nik: String(row[2]),
+    nama: row[3],
+    jabatan: row[4],
+    status: row[5],
+    keterangan: row[6] || "-",
+    foto: row[7] || ""
+  })).reverse();
 }
 
-function changeUserPassword(token, form) {
+function saveHarianSettings(token, form) {
   checkAdminGatekeeper_(token);
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("Master_User");
-  const data = sheet.getDataRange().getValues();
-  const oldPassHash = hashPassword_(form.oldPass);
-  const newPassHash = hashPassword_(form.newPass);
-
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(form.nik)) {
-      if (String(data[i][2]) === oldPassHash) {
-        sheet.getRange(i + 1, 3).setValue(newPassHash);
-        return { status: 'success', message: 'Password berhasil diperbarui!' };
-      } else {
-        return { status: 'error', message: 'Password Lama salah!' };
-      }
-    }
+  try {
+    const props = PropertiesService.getScriptProperties();
+    props.setProperties({
+      'SET_HARIAN_MASUK': form.jamMasuk,
+      'SET_HARIAN_TOLERANSI': form.jamToleransi,
+      'SET_HARIAN_PULANG': form.jamPulang
+    });
+    return { status: 'success', message: 'Jadwal harian berhasil diperbarui.' };
+  } catch (e) { 
+    return { status: 'error', message: 'Gagal menyimpan: ' + e.message }; 
   }
-  return { status: 'error', message: 'User tidak ditemukan.' };
 }
 
 function getSystemSettings(token) {
