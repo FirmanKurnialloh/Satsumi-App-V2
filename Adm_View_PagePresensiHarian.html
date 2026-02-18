@@ -7,12 +7,13 @@
     </div>
     
     <div style="display: flex; gap: 10px;">
-       <button class="btn" style="width: auto; padding: 10px 18px; background: var(--card); color: var(--text); border: 1px solid var(--border); box-shadow: none; display: flex; align-items: center; gap: 8px;" onclick="navTo('presensi-harian-setting')">
-         <i class="bi bi-sliders2-vertical"></i> <span class="hide-mobile">Pengaturan</span>
-       </button>
-       <button class="btn" style="width: auto; padding: 10px 18px; background: var(--primary); display: flex; align-items: center; gap: 8px;" onclick="navTo('presensi-harian-cetak')">
-         <i class="bi bi-file-earmark-excel"></i> <span class="hide-mobile">Cetak Laporan</span>
-       </button>
+        <button class="btn" style="width: auto; padding: 10px 18px; background: var(--card); color: var(--text); border: 1px solid var(--border); box-shadow: none; display: flex; align-items: center; gap: 8px;" 
+                onclick="openSettingHarianModal()">
+          <i class="bi bi-sliders2-vertical"></i> <span class="hide-mobile">Pengaturan</span>
+        </button>
+        <button class="btn" style="width: auto; padding: 10px 18px; background: var(--primary); display: flex; align-items: center; gap: 8px;" onclick="navTo('presensi-harian-cetak')">
+          <i class="bi bi-file-earmark-excel"></i> <span class="hide-mobile">Cetak Laporan</span>
+        </button>
     </div>
   </div>
 
@@ -44,8 +45,7 @@
             <th style="padding: 18px 20px; border-radius: 0 15px 0 0;">Keterangan Sistem</th>
           </tr>
         </thead>
-        <tbody id="table-rekap-harian">
-          </tbody>
+        <tbody id="table-rekap-harian"></tbody>
       </table>
     </div>
     
@@ -58,22 +58,18 @@
 
 <div class="modal-overlay" id="modal-detail-presensi" onclick="if(event.target.id==='modal-detail-presensi') this.classList.remove('show')">
   <div class="modal-card" style="max-width: 450px; padding: 0; text-align: left; overflow: hidden; border: none;">
-    
     <div style="width: 100%; height: 280px; background: #000; position: relative;">
       <img id="detail-foto" src="" style="width: 100%; height: 100%; object-fit: cover; opacity: 0.9;">
-      
       <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 25px; background: linear-gradient(transparent, rgba(0,0,0,0.95));">
         <span id="detail-badge-status" class="badge" style="margin-bottom: 10px; padding: 6px 14px; font-size: 0.7rem;"></span>
         <h3 id="detail-nama" style="color: #fff; margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.5px;"></h3>
         <p id="detail-jabatan" style="color: rgba(255,255,255,0.7); margin: 4px 0 0 0; font-size: 0.85rem; font-weight: 500;"></p>
       </div>
-      
       <button onclick="document.getElementById('modal-detail-presensi').classList.remove('show')" 
               style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.2); backdrop-filter: blur(10px); border: none; color: #fff; width: 36px; height: 36px; border-radius: 50%; cursor: pointer; display: grid; place-items: center; transition: 0.3s;">
         <i class="bi bi-x-lg"></i>
       </button>
     </div>
-
     <div style="padding: 25px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: var(--card);">
       <div>
         <label style="display: block; font-size: 0.65rem; color: var(--sub); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; font-weight: 700;">NIK / ID PEGAWAI</label>
@@ -88,11 +84,41 @@
         <div id="detail-keterangan" style="font-weight: 600; font-size: 0.95rem; line-height: 1.5; color: var(--text);"></div>
       </div>
     </div>
-
     <div style="padding: 15px 25px; background: var(--card); border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
       <button class="btn" style="width: auto; padding: 10px 25px; font-size: 0.9rem; background: var(--input-bg); color: var(--text); border: 1px solid var(--border); box-shadow: none;" 
               onclick="document.getElementById('modal-detail-presensi').classList.remove('show')">Tutup Detail</button>
     </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-setting-harian" onclick="if(event.target.id==='modal-setting-harian') this.classList.remove('show')">
+  <div class="modal-card" style="max-width: 400px; padding: 25px; text-align: left; border: none;">
+    <div style="margin-bottom: 20px;">
+      <h3 style="margin: 0; font-weight: 800; font-size: 1.3rem;"><i class="bi bi-clock-fill" style="color: var(--primary); margin-right: 10px;"></i>Jam Kerja GTK</h3>
+      <p style="margin: 5px 0 0 0; font-size: 0.85rem; color: var(--sub);">Atur waktu operasional presensi sekolah.</p>
+    </div>
+
+    <form onsubmit="event.preventDefault(); simpanJadwalHarian();">
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; font-size: 0.65rem; color: var(--sub); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; font-weight: 700;">JAM MASUK</label>
+        <input type="time" id="set-harian-masuk" class="input-control" required style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-weight:700;">
+      </div>
+
+      <div style="margin-bottom: 15px;">
+        <label style="display: block; font-size: 0.65rem; color: var(--sub); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; font-weight: 700;">TOLERANSI TERLAMBAT (MENIT)</label>
+        <input type="number" id="set-harian-toleransi" class="input-control" placeholder="Contoh: 15" required style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-weight:700;">
+      </div>
+
+      <div style="margin-bottom: 25px;">
+        <label style="display: block; font-size: 0.65rem; color: var(--sub); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 6px; font-weight: 700;">JAM PULANG</label>
+        <input type="time" id="set-harian-pulang" class="input-control" required style="width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:var(--input-bg); color:var(--text); font-weight:700;">
+      </div>
+
+      <div style="display: flex; gap: 10px; justify-content: flex-end;">
+        <button type="button" class="btn" style="background:none; color:var(--sub); border:none; box-shadow:none; width:auto;" onclick="document.getElementById('modal-setting-harian').classList.remove('show')">Batal</button>
+        <button type="submit" class="btn" style="width: auto; padding: 10px 25px; background: var(--primary);">Simpan Perubahan</button>
+      </div>
+    </form>
   </div>
 </div>
 
@@ -127,7 +153,6 @@
     const inputTgl = document.getElementById('filter-tanggal-presensi');
     if(inputTgl && !inputTgl.value) {
       const now = new Date();
-      // Penyesuaian Offset Waktu (Local)
       now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
       inputTgl.value = now.toISOString().split('T')[0];
     }

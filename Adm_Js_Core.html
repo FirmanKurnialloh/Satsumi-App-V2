@@ -1,9 +1,12 @@
 <script>
   /**
-   * GLOBAL CACHE
-   * Menyimpan data sementara agar bisa diakses oleh fungsi modal detail tanpa error parsing.
+   * GLOBAL VARIABLES & INSTANCES
+   * Digunakan untuk mengelola data sementara dan instance tabel agar tidak bentrok.
    */
   let REKAP_DATA_CACHE = [];
+  let USER_TABLE_INST = null;
+  let REKAP_TABLE_INST = null;
+  let REKAP_POLLING = null; 
 
   // === INIT & NAVIGASI ADMIN ===
   function initDashboard(user) {
@@ -11,18 +14,13 @@
     const elRole = document.getElementById('profile-role');
     const elInit = document.getElementById('profile-initial');
 
-    if (!elName || !elRole || !elInit) {
-      console.error("🚨 ERROR UI: Elemen Topbar tidak ditemukan!");
-    } else {
-      elName.innerText = user.nama;
-      elRole.innerText = user.role;
-      elInit.innerText = user.nama.charAt(0).toUpperCase();
-    }
+    if (elName) elName.innerText = user.nama;
+    if (elRole) elRole.innerText = user.role;
+    if (elInit) elInit.innerText = user.nama.charAt(0).toUpperCase();
     
     switchView('view-dashboard');
     
-    let currentHash = window.location.hash.substring(1);
-    if (!currentHash) currentHash = 'dashboard';
+    let currentHash = window.location.hash.substring(1) || 'dashboard';
     navTo(currentHash); 
   }
 
@@ -31,28 +29,16 @@
     if(currentHash) navTo(currentHash);
   });
 
-  // === UI & SIDEBAR ===
-  function toggleSubmenu(submenuId, arrowId) {
-    const submenu = document.getElementById(submenuId);
-    const arrow = document.getElementById(arrowId);
-    if (submenu) {
-      submenu.classList.toggle('open');
-      if (arrow) arrow.classList.toggle('rotate');
-    }
-  }
-
-  function toggleSidebar() {
-    const sidebar = document.getElementById('sidebar');
-    const overlay = document.getElementById('sidebar-overlay');
-    if (window.innerWidth <= 768) {
-      sidebar.classList.toggle('open');
-      overlay.classList.toggle('show');
-    } else {
-      sidebar.classList.toggle('closed');
-    }
-  }
-
+  /**
+   * NAVIGASI ANTAR HALAMAN (FIX COLUMN WIDTH)
+   */
   function navTo(pageId) {
+    // Stop polling saat pindah halaman
+    if (REKAP_POLLING) {
+      clearInterval(REKAP_POLLING);
+      REKAP_POLLING = null;
+    }
+
     document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
     const navEl = document.getElementById('nav-' + pageId);
     if(navEl) navEl.classList.add('active');
@@ -65,7 +51,12 @@
     const target = document.getElementById('page-' + pageId);
     if(target) {
       target.style.display = 'block'; 
-      setTimeout(() => target.classList.add('active-page'), 10);
+      setTimeout(() => {
+        target.classList.add('active-page');
+        
+        if (pageId === 'users' && USER_TABLE_INST) USER_TABLE_INST.columns.adjust().draw();
+        if (pageId === 'presensi-harian-rekap' && REKAP_TABLE_INST) REKAP_TABLE_INST.columns.adjust().draw();
+      }, 50);
     }
 
     const titles = { 
@@ -80,16 +71,20 @@
     document.getElementById('page-title').innerText = titles[pageId] || 'Dashboard';
 
     const token = STORAGE.getItem("sess_t");
-    
-    try {
-      const targetHash = '#' + pageId;
-      if (location.hash !== targetHash) location.hash = targetHash;
-    } catch (e) { }
-    
     if(pageId === 'dashboard') loadStats(token);
     if(pageId === 'users') loadUsers(token);
     if(pageId === 'settings') loadSettings(token);
-    if(pageId === 'presensi-harian-rekap') loadRekapHarian();
+    
+    // Logika Khusus Halaman Presensi
+    if(pageId === 'presensi-harian-rekap') {
+      loadRekapHarian(); 
+      REKAP_POLLING = setInterval(loadRekapHarianSilent, 30000);
+    }
+
+    // --- BARU: Load data jam kerja saat masuk ke halaman pengaturan ---
+    if(pageId === 'presensi-harian-setting') {
+      loadHarianSettings();
+    }
 
     if (window.innerWidth <= 768 && document.getElementById('sidebar').classList.contains('open')) toggleSidebar();
   }
@@ -118,10 +113,12 @@
   function loadUsers(token) {
     const tbody = document.getElementById('table-users');
     if ($.fn.DataTable.isDataTable('#userTable')) {
-      $('#userTable').DataTable().clear().destroy();
-      $('#userTable tbody').empty();
+      $('#userTable').DataTable().destroy();
+      $(tbody).empty();
     }
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Mengambil data...</td></tr>';
+    
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding:20px;">Mengambil data pengguna...</td></tr>';
+    
     google.script.run.withSuccessHandler(users => {
       tbody.innerHTML = "";
       if (!users || users.length === 0) {
@@ -138,50 +135,39 @@
           '<td style="font-family:monospace; font-weight:600;">'+u.nik+'</td>' +
           '<td><b>'+u.nama+'</b></td><td>'+u.email+'</td><td>'+roleBadge+'</td>' +
           '<td style="display:flex; gap:5px;">' +
-            '<button class="btn" style="background:var(--primary);padding:6px 10px;" data-nik="'+u.nik+'" data-nama="'+u.nama+'" data-email="'+u.email+'" data-role="'+u.role+'" onclick="openEditUserModal(this)"><i class="bi bi-pencil-fill"></i></button>' +
-            '<button class="btn" style="background:#f59e0b;padding:6px 10px;" data-nik="'+u.nik+'" data-nama="'+u.nama+'" onclick="openResetModalFromBtn(this)"><i class="bi bi-key-fill"></i></button>' +
-            '<button class="btn btn-danger-outline" style="padding:6px 10px;" onclick="hapusUser(\''+u.nik+'\')"><i class="bi bi-trash-fill"></i></button>' +
+            '<button class="btn-theme" style="width:32px;height:32px;background:var(--primary);color:white" data-nik="'+u.nik+'" data-nama="'+u.nama+'" data-email="'+u.email+'" data-role="'+u.role+'" onclick="openEditUserModal(this)"><i class="bi bi-pencil-fill" style="font-size:0.8rem"></i></button>' +
+            '<button class="btn-theme" style="width:32px;height:32px;background:#f59e0b;color:white" data-nik="'+u.nik+'" data-nama="'+u.nama+'" onclick="openResetModalFromBtn(this)"><i class="bi bi-key-fill" style="font-size:0.8rem"></i></button>' +
+            '<button class="btn-theme" style="width:32px;height:32px;background:var(--danger);color:white" onclick="hapusUser(\''+u.nik+'\')"><i class="bi bi-trash-fill" style="font-size:0.8rem"></i></button>' +
           '</td></tr>';
       });
-      $('#userTable').DataTable({ "retrieve": true, "pageLength": 10, "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json" } });
+
+      USER_TABLE_INST = $('#userTable').DataTable({
+        "retrieve": true,
+        "pageLength": 10,
+        "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json", "search": "" },
+        "dom": '<"top-actions"f>rt<"bottom-nav"ip>'
+      });
     }).getAllUsers(token);
   }
 
   /**
-   * LOAD REKAP HARIAN (Index-Based Click)
+   * REKAP HARIAN LOGIC
    */
-  function loadRekapHarian() {
-    const token = STORAGE.getItem("sess_t");
+  function renderRekapTableBody(data) {
     const tbody = document.getElementById('table-rekap-harian');
-    const inputTgl = document.getElementById('filter-tanggal-presensi');
-    
-    if (inputTgl && !inputTgl.value) {
-      inputTgl.value = new Date().toISOString().split('T')[0];
-    }
-    const targetDate = inputTgl ? inputTgl.value : "";
+    if (!tbody) return;
 
     if ($.fn.DataTable.isDataTable('#rekapHarianTable')) {
-      $('#rekapHarianTable').DataTable().clear().destroy();
-      $('#rekapHarianTable tbody').empty();
+        $('#rekapHarianTable').DataTable().clear().destroy();
     }
-    
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;"><div class="spinner-border text-primary"></div></td></tr>';
 
-    google.script.run.withSuccessHandler(data => {
-      tbody.innerHTML = "";
-      REKAP_DATA_CACHE = data; // Simpan data ke memori global
-
-      if (!data || data.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px; color: #94a3b8;">Tidak ada data presensi pada tanggal '+targetDate+'</td></tr>';
-        return;
-      }
-
-      data.forEach((row, index) => {
-        const isLate = row.keterangan.toLowerCase().includes('terlambat');
-        const statusBadgeClass = row.status === 'Masuk' ? 'badge-guru' : 'badge-admin';
-        const avatar = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.nama) + '&background=random';
-        
-        tbody.innerHTML += '<tr style="cursor:pointer" onclick="showDetailPresensi(' + index + ')">' +
+    let html = "";
+    data.forEach((row, index) => {
+      const isLate = row.keterangan.toLowerCase().includes('terlambat');
+      const statusBadgeClass = row.status === 'Masuk' ? 'badge-guru' : 'badge-admin';
+      const avatar = 'https://ui-avatars.com/api/?name=' + encodeURIComponent(row.nama);
+      
+      html += '<tr style="cursor:pointer" onclick="showDetailPresensi(' + index + ')">' +
           '<td><strong style="color:var(--primary);">' + row.jam + '</strong></td>' +
           '<td>' +
             '<div style="display:flex;align-items:center;gap:12px;">' +
@@ -198,30 +184,61 @@
             '<div style="font-size:0.7rem;text-transform:uppercase;opacity:0.6;">' + row.jabatan + '</div>' +
           '</td>' +
         '</tr>';
-      });
+    });
+    
+    tbody.innerHTML = html;
 
-      $('#rekapHarianTable').DataTable({ 
+    REKAP_TABLE_INST = $('#rekapHarianTable').DataTable({ 
         "retrieve": true, 
         "pageLength": 10, 
         "order": [[0, "desc"]],
         "language": { "url": "//cdn.datatables.net/plug-ins/1.13.6/i18n/id.json", "search": "" }, 
         "dom": '<"top-actions"f>rt<"bottom-nav"ip>' 
-      });
+    });
+  }
+
+  function loadRekapHarian() {
+    const token = STORAGE.getItem("sess_t");
+    const tbody = document.getElementById('table-rekap-harian');
+    const inputTgl = document.getElementById('filter-tanggal-presensi');
+    
+    if (inputTgl && !inputTgl.value) inputTgl.value = new Date().toISOString().split('T')[0];
+    const targetDate = inputTgl ? inputTgl.value : "";
+    
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:40px;"><div class="spinner-border text-primary"></div></td></tr>';
+
+    google.script.run.withSuccessHandler(data => {
+      REKAP_DATA_CACHE = data;
+      renderRekapTableBody(data);
+    }).getRekapHarian(token, targetDate);
+  }
+
+  function loadRekapHarianSilent() {
+    const token = STORAGE.getItem("sess_t");
+    const inputTgl = document.getElementById('filter-tanggal-presensi');
+    const targetDate = inputTgl ? inputTgl.value : new Date().toISOString().split('T')[0];
+    
+    const today = new Date().toISOString().split('T')[0];
+    if (targetDate !== today) return; 
+
+    google.script.run.withSuccessHandler(data => {
+      if (data.length !== REKAP_DATA_CACHE.length) {
+        REKAP_DATA_CACHE = data;
+        renderRekapTableBody(data);
+      }
     }).getRekapHarian(token, targetDate);
   }
 
   /**
-   * SHOW DETAIL MODAL (Global Scope)
+   * SHOW DETAIL MODAL (GLOBAL)
    */
   window.showDetailPresensi = function(index) {
     const data = REKAP_DATA_CACHE[index];
     if (!data) return;
 
-    // Pastikan elemen modal ada sebelum diisi
     const elNama = document.getElementById('detail-nama');
-    if (!elNama) return;
-
-    elNama.innerText = data.nama;
+    if (elNama) elNama.innerText = data.nama;
+    
     document.getElementById('detail-jabatan').innerText = data.jabatan || '-';
     document.getElementById('detail-nik').innerText = data.nik || '-';
     document.getElementById('detail-waktu').innerText = data.jam || '--:--';
@@ -237,17 +254,91 @@
     document.getElementById('modal-detail-presensi').classList.add('show');
   };
 
-  function loadSettings(token) {
-    google.script.run.withSuccessHandler(data => {
-      document.getElementById('set-app-name').value = data.appName; 
-      document.getElementById('set-app-desc').value = data.appDesc;
-      document.getElementById('set-maintenance').checked = data.maintenance; 
-      document.querySelector('.sidebar-title').innerText = data.appName;
-      document.getElementById('server-time').innerText = new Date().toLocaleString();
-    }).getSystemSettings(token);
+  /**
+ * FUNGSI: Buka Modal Pengaturan Jam Kerja
+ */
+function openSettingHarianModal() {
+  const token = STORAGE.getItem("sess_t");
+  
+  // Beri indikasi loading (opsional jika Sys_Js_Global mendukung)
+  showLoading("MENGAMBIL KONFIGURASI...");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      // Sembunyikan loading
+      if (typeof hideLoading === 'function') hideLoading(); 
+      else switchView('view-dashboard');
+
+      if (res.status === 'success') {
+        // Isi input modal dengan data dari database
+        document.getElementById('set-harian-masuk').value = res.data.jamMasuk || "07:00";
+        document.getElementById('set-harian-toleransi').value = res.data.jamToleransi || "15";
+        document.getElementById('set-harian-pulang').value = res.data.jamPulang || "15:00";
+        
+        // Tampilkan Modal
+        document.getElementById('modal-setting-harian').classList.add('show');
+      } else {
+        showToast("Gagal memuat data: " + res.message, "error");
+      }
+    })
+    .getHarianSettings(token); // Memanggil fungsi di Adm_Srv_API.js
+}
+
+/**
+ * FUNGSI: Simpan Data dari Modal
+ */
+function simpanJadwalHarian() {
+  const token = STORAGE.getItem("sess_t");
+  const form = {
+    jamMasuk: document.getElementById('set-harian-masuk').value,
+    jamToleransi: document.getElementById('set-harian-toleransi').value,
+    jamPulang: document.getElementById('set-harian-pulang').value
+  };
+
+  showLoading("MENYIMPAN...");
+
+  google.script.run
+    .withSuccessHandler(res => {
+      showToast(res.message, res.status);
+      if(res.status === 'success') {
+        // Tutup modal setelah berhasil
+        document.getElementById('modal-setting-harian').classList.remove('show');
+        // Refresh tabel rekap jika diperlukan (karena status terlambat mungkin berubah)
+        loadRekapHarian(); 
+      }
+    })
+    .saveHarianSettings(token, form);
+}
+
+  /**
+   * PENGATURAN JAM KERJA HARIAN
+   */
+  function loadHarianSettings() {
+    const token = STORAGE.getItem("sess_t");
+    showLoading("MENGAMBIL KONFIGURASI...");
+    
+    google.script.run
+      .withSuccessHandler(res => {
+        // Matikan loading dengan kembali ke view normal (switchView dashboard mematikan loading overlay jika dikelola Sys_Js_Global)
+        // Jika Sys_Js_Global punya fungsi hideLoading(), gunakan itu.
+        if (typeof hideLoading === 'function') hideLoading(); 
+        else switchView('view-dashboard');
+
+        if (res.status === 'success') {
+          document.getElementById('set-harian-masuk').value = res.data.jamMasuk || "";
+          document.getElementById('set-harian-toleransi').value = res.data.jamToleransi || "";
+          document.getElementById('set-harian-pulang').value = res.data.jamPulang || "";
+        } else {
+          showToast(res.message, "error");
+        }
+      })
+      .withFailureHandler(err => {
+        if (typeof hideLoading === 'function') hideLoading();
+        showToast("Gagal mengambil data: " + err.message, "error");
+      })
+      .getHarianSettings(token);
   }
 
-  // === FUNGSI PENGATURAN HARIAN ===
   function simpanJadwalHarian() {
     const token = STORAGE.getItem("sess_t");
     const form = {
@@ -255,123 +346,40 @@
       jamToleransi: document.getElementById('set-harian-toleransi').value,
       jamPulang: document.getElementById('set-harian-pulang').value
     };
-
-    if(!form.jamMasuk || !form.jamToleransi || !form.jamPulang) {
-      return showToast("Harap lengkapi semua pengaturan waktu!", "error");
-    }
-
-    showLoading("MENYIMPAN KONFIGURASI...");
+    if(!form.jamMasuk || !form.jamToleransi || !form.jamPulang) return showToast("Harap lengkapi waktu!", "error");
+    
+    showLoading("MENYIMPAN...");
     google.script.run.withSuccessHandler(res => {
       showToast(res.message, res.status);
       if(res.status === 'success') setTimeout(() => navTo('presensi-harian-rekap'), 1500);
     }).saveHarianSettings(token, form);
   }
 
-  // === FUNGSI CRUD USER ===
-  function openAddUserModal() { document.getElementById('modal-add-user').classList.add('show'); }
-  function closeUserModal() { document.getElementById('modal-add-user').classList.remove('show'); }
-  
-  function handleUserSubmit(e) {
-    e.preventDefault();
-    closeUserModal();
-    showLoading("MENYIMPAN...");
-    const token = STORAGE.getItem("sess_t");
-    const form = {
-      nik: document.getElementById('new-nik').value,
-      nama: document.getElementById('new-nama').value,
-      email: document.getElementById('new-email').value,
-      role: document.getElementById('new-role').value
-    };
-    google.script.run.withSuccessHandler(res => {
-      if (res.status === 'success') {
-        loadUsers(token);
-        if (res.temp) openTempPassModal(res.temp, form.nama, form.nik);
-      } else {
-        showToast(res.message, res.status);
-      }
-      switchView('view-dashboard');
-    }).saveUser(token, form);
+  // === SIDEBAR & LAYOUT HELPERS ===
+  function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('sidebar-overlay');
+    
+    if (window.innerWidth <= 768) {
+      sidebar.classList.toggle('open');
+      overlay.classList.toggle('show');
+    } else {
+      sidebar.classList.toggle('closed');
+    }
+    
+    setTimeout(() => {
+      if (USER_TABLE_INST) USER_TABLE_INST.columns.adjust().draw();
+      if (REKAP_TABLE_INST) REKAP_TABLE_INST.columns.adjust().draw();
+    }, 350);
   }
 
-  function openEditUserModal(btn) { 
-    document.getElementById('edit-nik').value = btn.getAttribute('data-nik');
-    document.getElementById('edit-nama').value = btn.getAttribute('data-nama');
-    document.getElementById('edit-email').value = btn.getAttribute('data-email');
-    document.getElementById('edit-role').value = btn.getAttribute('data-role');
-    document.getElementById('modal-edit-user').classList.add('show'); 
-  }
-  
-  function closeEditUserModal() { document.getElementById('modal-edit-user').classList.remove('show'); }
-
-  function openResetModalFromBtn(btn) {
-    const nik = btn.getAttribute('data-nik');
-    const nama = btn.getAttribute('data-nama');
-    document.getElementById('reset-target-name').innerText = nama;
-    document.getElementById('reset-target-nik').value = nik;
-    document.getElementById('modal-reset').classList.add('show');
-  }
-
-  function confirmResetPassword() {
-    const nik = document.getElementById('reset-target-nik').value;
-    const token = STORAGE.getItem("sess_t");
-    document.getElementById('modal-reset').classList.remove('show');
-    showLoading("MERESET...");
-    google.script.run.withSuccessHandler(res => {
-      if (res.status === 'success') openTempPassModal(res.temp, document.getElementById('reset-target-name').innerText, nik);
-      else showToast(res.message, 'error');
-      switchView('view-dashboard');
-    }).resetUserPassword(token, nik);
-  }
-
-  function hapusUser(nik) {
-    document.getElementById('delete-target-nik-value').value = nik;
-    document.getElementById('delete-target-nik-display').innerText = nik;
-    document.getElementById('modal-delete-user').classList.add('show');
-  }
-
-  function confirmDeleteUser() {
-    const nik = document.getElementById('delete-target-nik-value').value;
-    const token = STORAGE.getItem("sess_t");
-    document.getElementById('modal-delete-user').classList.remove('show');
-    showLoading("MENGHAPUS...");
-    google.script.run.withSuccessHandler(res => {
-      showToast(res.message, res.status);
-      loadUsers(token);
-      switchView('view-dashboard');
-    }).deleteUser(token, nik);
-  }
-
-  function openTempPassModal(pass, name, nik) {
-    document.getElementById('temp-pass-value').innerText = pass;
-    document.getElementById('temp-pass-name').innerText = name;
-    document.getElementById('temp-pass-nik').innerText = nik;
-    document.getElementById('modal-temp-pass').classList.add('show');
-  }
-
-  function closeTempPassModal() {
-    document.getElementById('modal-temp-pass').classList.remove('show');
-  }
-
-  function copyTempPass() { 
-    const val = document.getElementById('temp-pass-value').innerText; 
-    navigator.clipboard.writeText(val).then(() => showToast('Password disalin','success')); 
-  }
-
-  function handleSaveSettings(e) { 
-    e.preventDefault(); 
-    const token = STORAGE.getItem("sess_t"); 
-    showLoading("MENYIMPAN..."); 
-    const form = { appName: document.getElementById('set-app-name').value, appDesc: document.getElementById('set-app-desc').value }; 
-    google.script.run.withSuccessHandler(res => { 
-      showToast(res.message, res.status); 
-      switchView('view-dashboard'); 
-      document.querySelector('.sidebar-title').innerText = form.appName; 
-    }).saveSystemSettings(token, form); 
-  }
-
-  function handleMaintenanceToggle(el) { 
-    const token = STORAGE.getItem("sess_t"); 
-    google.script.run.withSuccessHandler(res => showToast(res.message, res.status)).toggleMaintenanceMode(token, el.checked); 
+  function loadSettings(token) {
+    google.script.run.withSuccessHandler(data => {
+      document.getElementById('set-app-name').value = data.appName; 
+      document.getElementById('set-app-desc').value = data.appDesc;
+      document.getElementById('set-maintenance').checked = data.maintenance; 
+      document.querySelector('.sidebar-title').innerText = data.appName;
+    }).getSystemSettings(token);
   }
 
   function logout() {

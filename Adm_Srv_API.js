@@ -2,10 +2,6 @@
  * ==========================================
  * SATSUMI ADMIN: SERVER CONTROLLER & API
  * ==========================================
- * Security Features:
- * - Token validation (HMAC-SHA256)
- * - Admin/Super gatekeeper checks
- * - Rate-limiting (Adjusted for Navigation)
  */
 
 /**
@@ -40,10 +36,10 @@ function checkRateLimit_(token) {
 function checkAdminGatekeeper_(token) {
   if (!token) throw new Error("Akses Ditolak: Token sesi tidak ditemukan.");
   try {
-    const parsed = parseSessionToken_(token);
+    const parsed = parseSessionToken_(token); // Berada di Sys_Srv_Auth
     if (!parsed.valid) throw new Error('Sesi tidak valid.');
     const tokenNik = parsed.nik;
-    const dbUser = getUserByNik_(tokenNik);
+    const dbUser = getUserByNik_(tokenNik); // Berada di Master_User logic
     if (!dbUser || (!dbUser.role.toUpperCase().includes('ADMIN') && !dbUser.role.toUpperCase().includes('SUPER'))) {
       throw new Error("Akses Ditolak: Anda bukan Administrator.");
     }
@@ -61,6 +57,8 @@ function generateRandomPassword(length) {
   return out;
 }
 
+// === DASHBOARD & USER MANAGEMENT ===
+
 function getAdminDashboardData(token) {
   checkRateLimit_(token);
   checkAdminGatekeeper_(token);
@@ -71,7 +69,7 @@ function getAdminDashboardData(token) {
 
   let totalHadirHariIni = 0;
   try {
-    const absensiSheet = ss.getSheetByName("PRESENSI") || ss.getSheetByName("Log_Presensi");
+    const absensiSheet = ss.getSheetByName("PRESENSI");
     if (absensiSheet) {
       const today = Utilities.formatDate(new Date(), "GMT+7", "dd/MM/yyyy");
       const absensiData = absensiSheet.getDataRange().getValues();
@@ -164,9 +162,8 @@ function deleteUser(token, nik) {
   return { status: 'error', message: 'Gagal: NIK tidak ditemukan.' };
 }
 
-/**
- * MENGAMBIL DATA REKAP PRESENSI HARIAN DENGAN FILTER TANGGAL
- */
+// === PRESENSI LOGIC ===
+
 function getRekapHarian(token, filterDate) {
   checkRateLimit_(token);
   checkAdminGatekeeper_(token);
@@ -199,6 +196,27 @@ function getRekapHarian(token, filterDate) {
   })).reverse();
 }
 
+// === CONFIGURATION & SETTINGS ===
+
+/**
+ * Mengambil konfigurasi jam kerja dari ScriptProperties
+ */
+function getHarianSettings(token) {
+  checkAdminGatekeeper_(token);
+  const props = PropertiesService.getScriptProperties();
+  return {
+    status: 'success',
+    data: {
+      jamMasuk: props.getProperty('SET_HARIAN_MASUK') || '07:00',
+      jamToleransi: props.getProperty('SET_HARIAN_TOLERANSI') || '15',
+      jamPulang: props.getProperty('SET_HARIAN_PULANG') || '15:00'
+    }
+  };
+}
+
+/**
+ * Menyimpan konfigurasi jam kerja ke ScriptProperties
+ */
 function saveHarianSettings(token, form) {
   checkAdminGatekeeper_(token);
   try {
